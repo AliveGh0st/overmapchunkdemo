@@ -1,0 +1,84 @@
+[gd_scene load_steps=5 format=3 uid="uid://ddeggs6ytade5"]
+
+[ext_resource type="Script" uid="uid://cgxf3jt8df4rb" path="res://overmap_renderer.gd" id="1_renderer"]
+[ext_resource type="Script" uid="uid://cbjm5xp5yueu6" path="res://overmap_player.gd" id="2_player"]
+[ext_resource type="Script" uid="uid://d28dv4lwuj1at" path="res://overmap_ui.gd" id="3_ui"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
+size = Vector2(32, 32)
+
+[node name="OvermapSystem" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.1, 0.1, 0.1, 1)
+
+[node name="OvermapRenderer" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -360.0
+offset_top = -360.0
+offset_right = 360.0
+offset_bottom = 360.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_renderer")
+
+[node name="Player" type="CharacterBody2D" parent="."]
+position = Vector2(2880, 2880)
+script = ExtResource("2_player")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
+shape = SubResource("RectangleShape2D_1")
+
+[node name="Sprite2D" type="Sprite2D" parent="Player"]
+scale = Vector2(0.5, 0.5)
+
+[node name="UI" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("3_ui")
+
+[node name="DebugLabel" type="Label" parent="UI"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -70.0
+offset_right = 490.0
+grow_vertical = 0
+text = "Overmap调试信息"
+
+[node name="Instructions" type="Label" parent="UI"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -290.0
+offset_bottom = 127.0
+grow_horizontal = 0
+text = "控制说明:
+WASD 或 方向键 - 移动
+距离边缘11格时自动创建新区块
+绿色 - 地形
+红色 - 玩家位置"
+horizontal_alignment = 2
