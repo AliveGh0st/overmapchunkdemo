@@ -14,17 +14,32 @@ const CHUNK_SIZE = 180  # 区块大小
 const TERRAIN_COLOR = Color.GREEN
 const EMPTY_COLOR = Color.DARK_GREEN
 const PLAYER_COLOR = Color.RED
-const RIVER_COLOR = Color.BLUE # 新增河流颜色
-const DEBUG_RIVER_START_END_COLOR = Color.YELLOW # 新增调试颜色
+const RIVER_COLOR = Color.BLUE # 河流颜色
+const DEBUG_RIVER_START_END_COLOR = Color.BLACK # 调试颜色
+const LAKE_SURFACE_COLOR = Color.BLUE # 湖泊表面颜色
+const LAKE_SHORE_COLOR = Color.BLUE # 湖岸颜色，蓝色
 
 # 地形类型
 const TERRAIN_TYPE_EMPTY = 0
 const TERRAIN_TYPE_LAND = 1
 const TERRAIN_TYPE_RIVER = 2
-const TERRAIN_TYPE_DEBUG_RIVER_START_END = 3 # 新增调试地形类型
+const TERRAIN_TYPE_DEBUG_RIVER_START_END = 3 # 调试地形类型
+const TERRAIN_TYPE_LAKE_SURFACE = 4 # 湖泊表面
+const TERRAIN_TYPE_LAKE_SHORE = 5 # 湖岸
 # 新增河流生成参数
 const RIVER_DENSITY_PARAM = 1 # 对应 C++ settings->river_scale, 0.0 表示无河流. 值越小河越多但可能越细, 值越大河越少但可能越宽.
 								# 例如 0.5 -> chance_divider=2, brush_size=1. 2.0 -> chance_divider=1, brush_size=2.
+
+# 湖泊生成参数
+const LAKE_NOISE_THRESHOLD = 0.25 # 噪声阈值，超过此值才会生成湖泊
+const LAKE_SIZE_MIN = 20 # 湖泊最小尺寸，小于此尺寸的湖泊会被过滤掉
+const LAKE_DEPTH = -5 # 湖泊深度（Z轴层级）
+
+# Simplex噪声参数
+const LAKE_NOISE_OCTAVES = 8 # 倍频数
+const LAKE_NOISE_PERSISTENCE = 0.5 # 持续性
+const LAKE_NOISE_SCALE = 0.002 # 缩放比例
+const LAKE_NOISE_POWER = 4.0 # 幂运算，使湖泊分布更稀疏、边缘更清晰
 
 # 玩家和地图状态
 var player_ref: CharacterBody2D
@@ -35,6 +50,9 @@ var generated_chunks: Dictionary = {}  # 已生成的区块，key为区块坐标
 var canvas_texture: ImageTexture
 var canvas_image: Image
 
+# 湖泊噪声生成器
+var lake_noise: FastNoiseLite
+
 # 防止无限循环的变量
 var chunk_creation_cooldown: float = 0.0
 var COOLDOWN_TIME: float = 0.5  # 半秒冷却时间
@@ -42,6 +60,7 @@ var COOLDOWN_TIME: float = 0.5  # 半秒冷却时间
 func _ready():
 	add_to_group("overmap_manager")
 	setup_canvas()
+	setup_lake_noise()
 	
 	# 查找玩家
 	await get_tree().process_frame
@@ -71,6 +90,15 @@ func setup_canvas():
 	canvas_image = Image.create(CANVAS_SIZE, CANVAS_SIZE, false, Image.FORMAT_RGB8)
 	canvas_texture = ImageTexture.new()
 	canvas_texture.set_image(canvas_image)
+
+func setup_lake_noise():
+	"""初始化湖泊噪声生成器"""
+	lake_noise = FastNoiseLite.new()
+	lake_noise.seed = randi()  # 使用随机种子
+	lake_noise.frequency = LAKE_NOISE_SCALE
+	lake_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	lake_noise.fractal_octaves = LAKE_NOISE_OCTAVES
+	lake_noise.fractal_gain = LAKE_NOISE_PERSISTENCE
 
 func check_and_generate_chunks():
 	"""检查玩家位置并在需要时生成新区块"""
@@ -132,6 +160,9 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	# 在基础地形生成后，尝试生成河流
 	if RIVER_DENSITY_PARAM > 0.0:
 		_place_rivers_for_chunk(chunk_coord)
+	
+	# 在河流生成后，尝试生成湖泊
+	_place_lakes_for_chunk(chunk_coord)
 
 func _place_rivers_for_chunk(p_chunk_coord: Vector2i):
 	# GDScript translation of C++ place_rivers function
@@ -447,6 +478,167 @@ func _random_entry_removed(arr: Array):
 	return entry
 # --- End Helper Functions ---
 
+# === 湖泊生成系统 ===
+
+func _place_lakes_for_chunk(chunk_coord: Vector2i):
+	"""为指定区块生成湖泊"""
+	# 计算区块在世界坐标中的起始位置
+	var world_start_x = chunk_coord.x * CHUNK_SIZE
+	var world_start_y = chunk_coord.y * CHUNK_SIZE
+	
+	# 跟踪已访问的湖泊点，避免重复处理
+	var visited: Dictionary = {}
+	
+	for i in range(CHUNK_SIZE):
+		for j in range(CHUNK_SIZE):
+			var world_pos = Vector2i(world_start_x + i, world_start_y + j)
+			
+			# 如果已经访问过这个点，跳过
+			if visited.has(world_pos):
+				continue
+			
+			# 检查这个点是否应该是湖泊
+			if not _is_lake_noise_at(world_pos):
+				continue
+			
+			# 进行洪水填充找到完整的湖泊
+			var lake_points = _flood_fill_lake(world_pos, visited)
+			
+			# 如果湖泊太小，跳过
+			if lake_points.size() < LAKE_SIZE_MIN:
+				continue
+			
+			# 创建湖泊点集合，包括河流点（湖泊会覆盖河流）
+			var lake_set: Dictionary = {}
+			for point in lake_points:
+				lake_set[point] = true
+			
+			# 添加更大范围内的所有河流点到湖泊集合（包括相邻区块）
+			# 这确保了跨区块的水体连续性
+			var extended_range = 1  # 扩展1个区块的范围来检查相邻区块
+			for dx in range(-extended_range, extended_range + 1):
+				for dy in range(-extended_range, extended_range + 1):
+					var check_chunk = chunk_coord + Vector2i(dx, dy)
+					var check_world_start_x = check_chunk.x * CHUNK_SIZE
+					var check_world_start_y = check_chunk.y * CHUNK_SIZE
+					
+					for x in range(CHUNK_SIZE):
+						for y in range(CHUNK_SIZE):
+							var world_coord = Vector2i(check_world_start_x + x, check_world_start_y + y)
+							var terrain_type = terrain_data.get(world_coord, TERRAIN_TYPE_EMPTY)
+							if terrain_type == TERRAIN_TYPE_RIVER or terrain_type == TERRAIN_TYPE_LAKE_SURFACE or terrain_type == TERRAIN_TYPE_LAKE_SHORE:
+								lake_set[world_coord] = true
+			
+			# 处理湖泊点，区分表面和岸边
+			for point in lake_points:
+				# 检查这个点是否在区块边界内
+				if not _is_world_point_in_chunk(point, chunk_coord):
+					continue
+				
+				var is_shore = false
+				# 检查8个相邻位置，使用全局地形数据而不是仅当前湖泊集合
+				for ni in range(-1, 2):
+					for nj in range(-1, 2):
+						if ni == 0 and nj == 0:
+							continue
+						var neighbor = point + Vector2i(ni, nj)
+						
+						# 检查相邻点是否是湖泊或河流
+						# 使用全局地形数据和湖泊噪声检查
+						var is_neighbor_water = false
+						
+						# 首先检查已存在的地形数据
+						var neighbor_terrain = terrain_data.get(neighbor, TERRAIN_TYPE_EMPTY)
+						if neighbor_terrain == TERRAIN_TYPE_RIVER or neighbor_terrain == TERRAIN_TYPE_LAKE_SURFACE or neighbor_terrain == TERRAIN_TYPE_LAKE_SHORE:
+							is_neighbor_water = true
+						# 然后检查是否应该是湖泊（通过噪声）
+						elif lake_set.has(neighbor) or _is_lake_noise_at(neighbor):
+							is_neighbor_water = true
+						
+						if not is_neighbor_water:
+							is_shore = true
+							break
+					if is_shore:
+						break
+				
+				# 设置地形类型
+				if is_shore:
+					terrain_data[point] = TERRAIN_TYPE_LAKE_SHORE
+				else:
+					terrain_data[point] = TERRAIN_TYPE_LAKE_SURFACE
+
+func _is_lake_noise_at(world_pos: Vector2i) -> bool:
+	"""检查指定世界坐标是否应该生成湖泊"""
+	# 移除严格的边界检查，允许湖泊生成到区块边缘
+	# 这是为了确保跨区块的湖泊连续性
+	
+	# 获取噪声值
+	var noise_value = lake_noise.get_noise_2d(world_pos.x, world_pos.y)
+	# 规范化到0-1范围
+	noise_value = (noise_value + 1.0) * 0.5
+	# 应用幂运算使分布更稀疏
+	noise_value = pow(noise_value, LAKE_NOISE_POWER)
+	
+	return noise_value > LAKE_NOISE_THRESHOLD
+
+func _flood_fill_lake(seed_point: Vector2i, visited: Dictionary) -> Array[Vector2i]:
+	"""使用洪水填充算法找到完整的湖泊区域"""
+	var lake_points: Array[Vector2i] = []
+	var queue: Array[Vector2i] = [seed_point]
+	
+	# 设置洪水填充的边界，防止无限扩展
+	var max_distance = CHUNK_SIZE * 2  # 允许跨越多个区块
+	
+	while not queue.is_empty():
+		var current = queue.pop_front()
+		
+		# 如果已访问过，跳过
+		if visited.has(current):
+			continue
+		
+		# 边界检查：限制洪水填充范围
+		var distance_from_seed = abs(current.x - seed_point.x) + abs(current.y - seed_point.y)
+		if distance_from_seed > max_distance:
+			continue
+		
+		# 标记为已访问
+		visited[current] = true
+		
+		# 如果不是湖泊噪声点，跳过
+		if not _is_lake_noise_at(current):
+			continue
+		
+		# 添加到湖泊点列表
+		lake_points.append(current)
+		
+		# 检查4个相邻点
+		var neighbors = [
+			current + Vector2i(1, 0),
+			current + Vector2i(-1, 0),
+			current + Vector2i(0, 1),
+			current + Vector2i(0, -1)
+		]
+		
+		for neighbor in neighbors:
+			if not visited.has(neighbor):
+				queue.append(neighbor)
+	
+	return lake_points
+
+func _is_world_point_in_chunk(world_pos: Vector2i, chunk_coord: Vector2i) -> bool:
+	"""检查世界坐标点是否在指定区块内"""
+	var world_start_x = chunk_coord.x * CHUNK_SIZE
+	var world_start_y = chunk_coord.y * CHUNK_SIZE
+	
+	return (world_pos.x >= world_start_x and world_pos.x < world_start_x + CHUNK_SIZE and
+			world_pos.y >= world_start_y and world_pos.y < world_start_y + CHUNK_SIZE)
+
+func _world_to_local_in_any_chunk(world_pos: Vector2i) -> Vector2i:
+	"""将世界坐标转换为任意区块内的本地坐标（用于边界检查）"""
+	return Vector2i(world_pos.x % CHUNK_SIZE, world_pos.y % CHUNK_SIZE)
+
+# === 湖泊生成系统结束 ===
+
 func update_canvas_rendering():
 	canvas_image.fill(EMPTY_COLOR)
 	
@@ -476,6 +668,10 @@ func update_canvas_rendering():
 					color_to_draw = RIVER_COLOR
 				TERRAIN_TYPE_DEBUG_RIVER_START_END: # 新增
 					color_to_draw = DEBUG_RIVER_START_END_COLOR
+				TERRAIN_TYPE_LAKE_SURFACE:
+					color_to_draw = LAKE_SURFACE_COLOR
+				TERRAIN_TYPE_LAKE_SHORE:
+					color_to_draw = LAKE_SHORE_COLOR
 			
 			# Only draw if not empty, or handle EMPTY_COLOR explicitly if needed
 			# The fill operation already set it to EMPTY_COLOR
