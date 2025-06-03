@@ -61,7 +61,7 @@ var lake_noise: FastNoiseLite
 
 # 防止无限循环的变量
 var chunk_creation_cooldown: float = 0.0
-var COOLDOWN_TIME: float = 0.5  # 半秒冷却时间
+var COOLDOWN_TIME: float = 0.1  # 0.1秒冷却时间，更快响应玩家移动
 
 func update_viewport_size():
 	"""根据当前视口大小更新地图渲染尺寸"""
@@ -169,18 +169,43 @@ func check_and_generate_chunks():
 	# 检查是否接近边缘，如果是则生成相邻区块
 	var need_generation = false
 	
-	if local_x < BORDER_THRESHOLD:
+	# 检查4个主要方向
+	var near_left = local_x < BORDER_THRESHOLD
+	var near_right = local_x >= CHUNK_SIZE - BORDER_THRESHOLD
+	var near_top = local_y < BORDER_THRESHOLD
+	var near_bottom = local_y >= CHUNK_SIZE - BORDER_THRESHOLD
+	
+	# 生成主要方向的区块
+	if near_left:
 		generate_chunk_at(current_chunk + Vector2i(-1, 0))
 		need_generation = true
-	if local_x >= CHUNK_SIZE - BORDER_THRESHOLD:
+	if near_right:
 		generate_chunk_at(current_chunk + Vector2i(1, 0))
 		need_generation = true
-	if local_y < BORDER_THRESHOLD:
+	if near_top:
 		generate_chunk_at(current_chunk + Vector2i(0, -1))
 		need_generation = true
-	if local_y >= CHUNK_SIZE - BORDER_THRESHOLD:
+	if near_bottom:
 		generate_chunk_at(current_chunk + Vector2i(0, 1))
 		need_generation = true
+	
+	# 生成对角线方向的区块（当玩家接近角落时）
+	if near_left and near_top:
+		generate_chunk_at(current_chunk + Vector2i(-1, -1))
+		need_generation = true
+	if near_right and near_top:
+		generate_chunk_at(current_chunk + Vector2i(1, -1))
+		need_generation = true
+	if near_left and near_bottom:
+		generate_chunk_at(current_chunk + Vector2i(-1, 1))
+		need_generation = true
+	if near_right and near_bottom:
+		generate_chunk_at(current_chunk + Vector2i(1, 1))
+		need_generation = true
+	
+	# 额外的安全检查：确保当前区块已生成
+	# 这是为了处理玩家可能直接跳入新区块的情况
+	generate_chunk_at(current_chunk)
 	
 	if need_generation:
 		chunk_creation_cooldown = COOLDOWN_TIME
@@ -920,7 +945,32 @@ func get_debug_info() -> String:
 	var local_x = world_grid_x - current_chunk.x * CHUNK_SIZE
 	var local_y = world_grid_y - current_chunk.y * CHUNK_SIZE
 	
-	return "玩家世界位置: (%d, %d), 当前区块: %s, 区块内位置: (%d, %d), 已生成区块数: %d\n视野大小: %dx%d 格子, 画布: %dx%d 像素" % [
+	# 检测边界状态
+	var near_left = local_x < BORDER_THRESHOLD
+	var near_right = local_x >= CHUNK_SIZE - BORDER_THRESHOLD
+	var near_top = local_y < BORDER_THRESHOLD
+	var near_bottom = local_y >= CHUNK_SIZE - BORDER_THRESHOLD
+	
+	var edge_status = []
+	if near_left: edge_status.append("左")
+	if near_right: edge_status.append("右")
+	if near_top: edge_status.append("上")
+	if near_bottom: edge_status.append("下")
+	
+	var edge_info = "无" if edge_status.is_empty() else ", ".join(edge_status)
+	
+	# 检查周围区块生成状态
+	var surrounding_chunks = []
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			if dx == 0 and dy == 0:
+				continue
+			var chunk_coord = current_chunk + Vector2i(dx, dy)
+			var generated = generated_chunks.has(chunk_coord)
+			surrounding_chunks.append("(%d,%d):%s" % [chunk_coord.x, chunk_coord.y, "已生成" if generated else "未生成"])
+	
+	return "玩家世界位置: (%d, %d), 当前区块: %s, 区块内位置: (%d, %d)\n已生成区块数: %d, 接近边缘: %s\n冷却时间: %.2fs\n视野大小: %dx%d 格子, 画布: %dx%d 像素\n周围区块: %s" % [
 		world_grid_x, world_grid_y, str(current_chunk), local_x, local_y, generated_chunks.size(),
-		map_size_x, map_size_y, canvas_size_x, canvas_size_y
+		edge_info, chunk_creation_cooldown, map_size_x, map_size_y, canvas_size_x, canvas_size_y,
+		", ".join(surrounding_chunks)
 	]
