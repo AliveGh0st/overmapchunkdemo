@@ -497,13 +497,9 @@ func _apply_river_brush(p_chunk_coord: Vector2i, center_local: Vector2i, brush_f
 
 # --- Helper Functions for River Generation ---
 func _is_lake_at(world_coord: Vector2i) -> bool:
-	"""检查指定世界坐标是否是湖泊（已存在的湖泊地形或噪声预判的湖泊位置）"""
+	"""检查指定世界坐标是否是湖泊（仅判断已生成的湖泊地形类型）"""
 	var terrain_type = terrain_data.get(world_coord, TERRAIN_TYPE_EMPTY)
-	# 首先检查已存在的湖泊地形
-	if terrain_type == TERRAIN_TYPE_LAKE_SURFACE or terrain_type == TERRAIN_TYPE_LAKE_SHORE:
-		return true
-	# 然后检查噪声，预判这个位置是否会成为湖泊
-	return _is_lake_noise_at(world_coord)
+	return terrain_type == TERRAIN_TYPE_LAKE_SURFACE or terrain_type == TERRAIN_TYPE_LAKE_SHORE
 
 func _local_to_world(local_pos: Vector2i, p_chunk_coord: Vector2i) -> Vector2i:
 	var world_start_x = p_chunk_coord.x * CHUNK_SIZE
@@ -614,6 +610,10 @@ func _place_lakes_for_chunk(chunk_coord: Vector2i):
 						elif lake_set.has(neighbor) or _is_lake_noise_at(neighbor):
 							is_neighbor_water = true
 						
+						# 只认定lake_set为水体，不再用地形类型和噪声
+						if lake_set.has(neighbor):
+							is_neighbor_water = true
+						
 						if not is_neighbor_water:
 							is_shore = true
 							break
@@ -625,6 +625,9 @@ func _place_lakes_for_chunk(chunk_coord: Vector2i):
 					terrain_data[point] = TERRAIN_TYPE_LAKE_SHORE
 				else:
 					terrain_data[point] = TERRAIN_TYPE_LAKE_SURFACE
+			
+			# 在湖泊生成完成后，尝试连接湖泊到最近的河流
+			_connect_lake_to_rivers(lake_points, chunk_coord)
 
 func _is_lake_noise_at(world_pos: Vector2i) -> bool:
 	"""检查指定世界坐标是否应该生成湖泊"""
@@ -695,6 +698,148 @@ func _is_world_point_in_chunk(world_pos: Vector2i, chunk_coord: Vector2i) -> boo
 func _world_to_local_in_any_chunk(world_pos: Vector2i) -> Vector2i:
 	"""将世界坐标转换为任意区块内的本地坐标（用于边界检查）"""
 	return Vector2i(world_pos.x % CHUNK_SIZE, world_pos.y % CHUNK_SIZE)
+
+func _connect_lake_to_rivers(lake_points: Array[Vector2i], chunk_coord: Vector2i):
+	"""将湖泊连接到最近的河流，与C++逻辑完全一致"""
+	if lake_points.is_empty():
+		return
+	
+	# 获取湖泊的最北端和最南端点
+	# 使用C++中相同的minmax_element逻辑
+	var north_south_most = _get_north_south_most_points(lake_points)
+	var northmost = north_south_most[0]
+	var southmost = north_south_most[1]
+	
+	# 检查最北端点是否在当前区块范围内，如果是则连接到最近的河流
+	if _is_world_point_in_chunk(northmost, chunk_coord):
+		_connect_lake_to_closest_river(northmost)
+	
+	# 检查最南端点是否在当前区块范围内，如果是则连接到最近的河流
+	if _is_world_point_in_chunk(southmost, chunk_coord):
+		_connect_lake_to_closest_river(southmost)
+
+func _get_north_south_most_points(lake_points: Array[Vector2i]) -> Array[Vector2i]:
+	"""获取湖泊的最北端和最南端点，与C++的minmax_element逻辑一致"""
+	if lake_points.is_empty():
+		return [Vector2i.ZERO, Vector2i.ZERO]
+	
+	var northmost = lake_points[0]  # 最小Y值（最北）
+	var southmost = lake_points[0]  # 最大Y值（最南）
+	
+	for point in lake_points:
+		if point.y < northmost.y:
+			northmost = point
+		if point.y > southmost.y:
+			southmost = point
+	
+	return [northmost, southmost]
+
+func _connect_lake_to_closest_river(lake_connection_point: Vector2i):
+	"""将湖泊连接点连接到最近的河流，与C++lambda函数逻辑完全一致"""
+	var closest_distance = -1
+	var closest_point = Vector2i.ZERO
+	
+	# 搜索整个已生成区域内的所有河流点
+	# 这里需要搜索所有已生成的区块，而不仅仅是当前区块
+	for chunk_coord in generated_chunks.keys():
+		var world_start_x = chunk_coord.x * CHUNK_SIZE
+		var world_start_y = chunk_coord.y * CHUNK_SIZE
+		
+		for x in range(CHUNK_SIZE):
+			for y in range(CHUNK_SIZE):
+				var world_coord = Vector2i(world_start_x + x, world_start_y + y)
+				var terrain_type = terrain_data.get(world_coord, TERRAIN_TYPE_EMPTY)
+				
+				# 检查是否是河流（包括调试河流起终点）
+				if terrain_type == TERRAIN_TYPE_RIVER or terrain_type == TERRAIN_TYPE_DEBUG_RIVER_START_END:
+					var distance = _square_dist(lake_connection_point, world_coord)
+					if distance < closest_distance or closest_distance < 0:
+						closest_point = world_coord
+						closest_distance = distance
+	
+	# 如果找到了河流点且距离大于0，则在它们之间画一条河流
+	if closest_distance > 0:
+		_place_river_between_points(closest_point, lake_connection_point)
+
+func _square_dist(p1: Vector2i, p2: Vector2i) -> int:
+	"""计算两点间的平方距离，与C++的square_dist函数一致"""
+	var dx = p1.x - p2.x
+	var dy = p1.y - p2.y
+	return dx * dx + dy * dy
+
+func _place_river_between_points(start_point: Vector2i, end_point: Vector2i):
+	"""在两点之间画一条河流，与C++的place_river函数逻辑一致"""
+	var river_placement_chance_divider = int(max(1.0, 1.0 / RIVER_DENSITY_PARAM))
+	var river_brush_size_factor = int(max(1.0, RIVER_DENSITY_PARAM))
+	
+	var current_point = start_point
+	var iterations = 0
+	var max_iterations = abs(end_point.x - start_point.x) + abs(end_point.y - start_point.y) + 100
+	
+	while current_point != end_point and iterations < max_iterations:
+		iterations += 1
+		var prev_point = current_point
+		
+		# 随机游走组件
+		current_point.x += randi_range(-1, 1)
+		current_point.y += randi_range(-1, 1)
+		
+		# 应用河流笔刷
+		_apply_river_brush_at_world_point(current_point, river_brush_size_factor, river_placement_chance_divider)
+		
+		# 向目标点移动的逻辑（简化版C++逻辑）
+		var distance_x = abs(end_point.x - current_point.x)
+		var distance_y = abs(end_point.y - current_point.y)
+		var total_distance = distance_x + distance_y
+		
+		if total_distance > 0:
+			# 更偏向于朝目标移动
+			if end_point.x > current_point.x and randi() % max(1, total_distance) < distance_x:
+				current_point.x += 1
+			elif end_point.x < current_point.x and randi() % max(1, total_distance) < distance_x:
+				current_point.x -= 1
+			
+			if end_point.y > current_point.y and randi() % max(1, total_distance) < distance_y:
+				current_point.y += 1
+			elif end_point.y < current_point.y and randi() % max(1, total_distance) < distance_y:
+				current_point.y -= 1
+		
+		# 第二次随机步进和笔刷应用
+		current_point.x += randi_range(-1, 1)
+		current_point.y += randi_range(-1, 1)
+		
+		# 应用笔刷，考虑距离目标的接近程度
+		for i in range(-river_brush_size_factor, river_brush_size_factor + 1):
+			for j in range(-river_brush_size_factor, river_brush_size_factor + 1):
+				var brush_point = current_point + Vector2i(j, i)
+				
+				# 如果接近目标或者符合概率，就放置河流
+				var is_near_target = abs(end_point.y - brush_point.y) < 4 and abs(end_point.x - brush_point.x) < 4
+				if is_near_target or _one_in(river_placement_chance_divider):
+					if not _is_lake_at(brush_point):
+						terrain_data[brush_point] = TERRAIN_TYPE_RIVER
+		
+		# 如果卡住了，强制向目标移动一步
+		if current_point == prev_point and current_point != end_point:
+			if current_point.x < end_point.x:
+				current_point.x += 1
+			elif current_point.x > end_point.x:
+				current_point.x -= 1
+			if current_point.y < end_point.y:
+				current_point.y += 1
+			elif current_point.y > end_point.y:
+				current_point.y -= 1
+	
+	# 确保终点也是河流
+	_apply_river_brush_at_world_point(end_point, river_brush_size_factor, river_placement_chance_divider, true)
+
+func _apply_river_brush_at_world_point(center_world: Vector2i, brush_factor: int, chance_divider: int, force_place: bool = false):
+	"""在世界坐标点应用河流笔刷"""
+	for i in range(-brush_factor, brush_factor + 1):
+		for j in range(-brush_factor, brush_factor + 1):
+			var brush_point = center_world + Vector2i(j, i)
+			if not _is_lake_at(brush_point) and (force_place or _one_in(chance_divider)):
+				terrain_data[brush_point] = TERRAIN_TYPE_RIVER
 
 # === 湖泊生成系统结束 ===
 
