@@ -12,9 +12,13 @@ extends CharacterBody2D
 func _ready():
 	# 添加到玩家组，供overmap管理器查找
 	add_to_group("player")
-		# 确保玩家在地图中心（第0区块的中心）
-	var chunk_center_pixels = 180.0 * tile_size / 2.0  # 180格子 * 32像素/格子 / 2
-	global_position = Vector2(chunk_center_pixels, chunk_center_pixels)
+	# 确保玩家在地图中心（第0区块的中心）
+	# 计算区块中心的网格坐标，然后转换为像素位置
+	var chunk_center_grid = 180.0 / 2.0  # 90格子
+	global_position = Vector2(
+		chunk_center_grid * tile_size + tile_size / 2.0,
+		chunk_center_grid * tile_size + tile_size / 2.0
+	)
 	
 	# 如果启用格子对齐，调整到最近的格子中心
 	if grid_aligned:
@@ -65,15 +69,19 @@ func _physics_process(_delta):
 
 func snap_to_grid():
 	"""将玩家位置对齐到最近的格子中心"""
-	var grid_pos = get_grid_position()
+	# 计算最近的网格中心位置
+	# 先减去半个格子大小，然后取整，再加回半个格子大小
+	var grid_x = round((global_position.x - tile_size / 2.0) / tile_size)
+	var grid_y = round((global_position.y - tile_size / 2.0) / tile_size)
+	
 	global_position = Vector2(
-		grid_pos.x * tile_size + tile_size / 2.0,
-		grid_pos.y * tile_size + tile_size / 2.0
+		grid_x * tile_size + tile_size / 2.0,
+		grid_y * tile_size + tile_size / 2.0
 	)
 
 # 获取玩家在overmap网格中的位置
 func get_grid_position() -> Vector2i:
 	return Vector2i(
-		int(global_position.x / tile_size),
-		int(global_position.y / tile_size)
+		round((global_position.x - tile_size / 2.0) / tile_size),
+		round((global_position.y - tile_size / 2.0) / tile_size)
 	)
