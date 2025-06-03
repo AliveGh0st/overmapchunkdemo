@@ -4,10 +4,12 @@ class_name OvermapRenderer
 # 连续地图overmap渲染器
 
 # 地图设置
-const MAP_SIZE = 180  # 当前渲染区域：180x180 格子
-const CELL_SIZE = 4   # 每个格子4像素
+var map_size_x: int  # 动态计算的渲染区域宽度（格子数）
+var map_size_y: int  # 动态计算的渲染区域高度（格子数）
+const CELL_SIZE = 4   # 每个格子的像素大小
 const BORDER_THRESHOLD = 11  # 距离边缘11格时创建新区块
-const CANVAS_SIZE = MAP_SIZE * CELL_SIZE  # 720x720 像素
+var canvas_size_x: int  # 动态计算的画布宽度（像素）
+var canvas_size_y: int  # 动态计算的画布高度（像素）
 const CHUNK_SIZE = 180  # 区块大小
 
 # 颜色设置
@@ -50,6 +52,10 @@ var generated_chunks: Dictionary = {}  # 已生成的区块，key为区块坐标
 var canvas_texture: ImageTexture
 var canvas_image: Image
 
+# 渲染优化变量
+var last_render_world_pos: Vector2i = Vector2i(-999999, -999999)  # 上次渲染时的玩家世界位置
+var render_dirty: bool = true  # 是否需要重新渲染
+
 # 湖泊噪声生成器
 var lake_noise: FastNoiseLite
 
@@ -57,10 +63,40 @@ var lake_noise: FastNoiseLite
 var chunk_creation_cooldown: float = 0.0
 var COOLDOWN_TIME: float = 0.5  # 半秒冷却时间
 
+func update_viewport_size():
+	"""根据当前视口大小更新地图渲染尺寸"""
+	var viewport_size = get_viewport().get_visible_rect().size
+	map_size_x = int(viewport_size.x / CELL_SIZE)
+	map_size_y = int(viewport_size.y / CELL_SIZE)
+	canvas_size_x = map_size_x * CELL_SIZE
+	canvas_size_y = map_size_y * CELL_SIZE
+	
+	print("视口大小更新: %dx%d 像素, 地图格子: %dx%d, 画布: %dx%d" % [
+		viewport_size.x, viewport_size.y, map_size_x, map_size_y, canvas_size_x, canvas_size_y
+	])
+
+func _on_viewport_size_changed():
+	"""当视口大小变化时重新计算并重新创建画布"""
+	var old_canvas_size_x = canvas_size_x
+	var old_canvas_size_y = canvas_size_y
+	
+	update_viewport_size()
+	
+	# 只有当画布尺寸实际发生变化时才重新创建画布
+	if canvas_size_x != old_canvas_size_x or canvas_size_y != old_canvas_size_y:
+		setup_canvas()
+		print("画布尺寸变化，重新创建画布: %dx%d -> %dx%d" % [
+			old_canvas_size_x, old_canvas_size_y, canvas_size_x, canvas_size_y
+		])
+
 func _ready():
 	add_to_group("overmap_manager")
+	update_viewport_size()  # 计算视野大小
 	setup_canvas()
 	setup_lake_noise()
+	
+	# 监听窗口大小变化
+	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	
 	# 查找玩家
 	await get_tree().process_frame
@@ -82,14 +118,25 @@ func _process(delta):
 	# 检查玩家位置，必要时生成新区块
 	check_and_generate_chunks()
 	
-	# 更新画布
-	update_canvas_rendering()
+	# 获取当前玩家世界位置
+	var world_pos = player_ref.global_position
+	var current_world_pos = Vector2i(
+		int(world_pos.x / 32.0),
+		int(world_pos.y / 32.0)
+	)
+	
+	# 只有当玩家位置发生变化或标记为dirty时才重新渲染
+	if current_world_pos != last_render_world_pos or render_dirty:
+		last_render_world_pos = current_world_pos
+		render_dirty = false
+		update_canvas_rendering()
 
 func setup_canvas():
 	"""初始化画布"""
-	canvas_image = Image.create(CANVAS_SIZE, CANVAS_SIZE, false, Image.FORMAT_RGB8)
+	canvas_image = Image.create(canvas_size_x, canvas_size_y, false, Image.FORMAT_RGB8)
 	canvas_texture = ImageTexture.new()
 	canvas_texture.set_image(canvas_image)
+	render_dirty = true  # 标记需要重新渲染
 
 func setup_lake_noise():
 	"""初始化湖泊噪声生成器"""
@@ -144,6 +191,7 @@ func generate_chunk_at(chunk_coord: Vector2i):
 		return
 	
 	generated_chunks[chunk_coord] = true
+	render_dirty = true  # 标记需要重新渲染，因为有新地形生成
 	
 	# 计算区块在世界坐标中的起始位置
 	var world_start_x = chunk_coord.x * CHUNK_SIZE
@@ -158,15 +206,18 @@ func generate_chunk_at(chunk_coord: Vector2i):
 			terrain_data[Vector2i(world_x, world_y)] = TERRAIN_TYPE_LAND # 修正：设置为土地类型
 	
 	# 在基础地形生成后，尝试生成河流
+	# 注意：河流生成时会检查湖泊噪声，避免在将来会成为湖泊的位置生成河流
 	if RIVER_DENSITY_PARAM > 0.0:
 		_place_rivers_for_chunk(chunk_coord)
 	
 	# 在河流生成后，尝试生成湖泊
+	# 湖泊会覆盖河流，但河流生成时已经避开了湖泊区域，减少冲突
 	_place_lakes_for_chunk(chunk_coord)
 
 func _place_rivers_for_chunk(p_chunk_coord: Vector2i):
 	# GDScript translation of C++ place_rivers function
 	# OMAPX and OMAPY are CHUNK_SIZE in this context
+	# 河流生成时会检查湖泊噪声，避免在湖泊位置生成河流，符合C++原版逻辑
 	var river_placement_chance_divider = int(max(1.0, 1.0 / RIVER_DENSITY_PARAM))
 	var river_brush_size_factor = int(max(1.0, RIVER_DENSITY_PARAM))
 
@@ -196,7 +247,7 @@ func _place_rivers_for_chunk(p_chunk_coord: Vector2i):
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(-1, 0)):
 				if starts_from_north_added < 3 and \
 				   _one_in(river_placement_chance_divider) and (river_starts_local.is_empty() or \
-				   river_starts_local.back().x < (i - 6) * river_brush_size_factor ): # river_scale in C++ is river_brush_size_factor here for spacing
+				   river_starts_local.back().x < (i - 8) * river_brush_size_factor ): # river_scale in C++ is river_brush_size_factor here for spacing
 					river_starts_local.append(p_mine_local)
 					starts_from_north_added += 1
 
@@ -218,7 +269,7 @@ func _place_rivers_for_chunk(p_chunk_coord: Vector2i):
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(0, -1)):
 				if starts_from_west_added < 3 and \
 				   _one_in(river_placement_chance_divider) and (river_starts_local.size() == rivers_from_north_count or \
-				   river_starts_local.back().y < (i - 6) * river_brush_size_factor):
+				   river_starts_local.back().y < (8) * river_brush_size_factor):
 					river_starts_local.append(p_mine_local)
 					starts_from_west_added += 1
 	
@@ -239,7 +290,7 @@ func _place_rivers_for_chunk(p_chunk_coord: Vector2i):
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(-1, 0)):
 				if ends_from_south_added < 3 and \
 				   (river_ends_local.is_empty() or \
-				   river_ends_local.back().x < (i - 6) ): # Spacing, original C++ seems to not use river_scale here
+				   river_ends_local.back().x < (i - 8) ): # Spacing, original C++ seems to not use river_scale here
 					river_ends_local.append(p_mine_local)
 					ends_from_south_added += 1
 	
@@ -261,7 +312,7 @@ func _place_rivers_for_chunk(p_chunk_coord: Vector2i):
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(0, -1)):
 				if ends_from_east_added < 3 and \
 				   (river_ends_local.size() == rivers_to_south_count or \
-				   river_ends_local.back().y < (i - 6)): # Spacing
+				   river_ends_local.back().y < (i - 8)): # Spacing
 					river_ends_local.append(p_mine_local)
 					ends_from_east_added += 1
 
@@ -415,8 +466,8 @@ func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loc
 						continue
 					
 					var world_coord = _local_to_world(brush_point_local, p_chunk_coord)
-					# Assuming no lakes: C++: if( !ter( p )->is_lake() && one_in( river_chance ) )
-					if _one_in(river_placement_chance_divider):
+					# C++: if( !ter( p )->is_lake() && one_in( river_chance ) )
+					if not _is_lake_at(world_coord) and _one_in(river_placement_chance_divider):
 						terrain_data[world_coord] = TERRAIN_TYPE_RIVER
 		
 		# If p2 didn't move, and it's not the target, force a small step to avoid getting stuck.
@@ -441,11 +492,19 @@ func _apply_river_brush(p_chunk_coord: Vector2i, center_local: Vector2i, brush_f
 			if _is_inbounds_local(brush_p_local):
 				var world_coord = _local_to_world(brush_p_local, p_chunk_coord)
 				# C++: if( !ter( p )->is_lake() && one_in( river_chance ) )
-				# Assuming no lakes for now.
-				if force_place or _one_in(chance_divider):
+				if not _is_lake_at(world_coord) and (force_place or _one_in(chance_divider)):
 					terrain_data[world_coord] = TERRAIN_TYPE_RIVER
 
 # --- Helper Functions for River Generation ---
+func _is_lake_at(world_coord: Vector2i) -> bool:
+	"""检查指定世界坐标是否是湖泊（已存在的湖泊地形或噪声预判的湖泊位置）"""
+	var terrain_type = terrain_data.get(world_coord, TERRAIN_TYPE_EMPTY)
+	# 首先检查已存在的湖泊地形
+	if terrain_type == TERRAIN_TYPE_LAKE_SURFACE or terrain_type == TERRAIN_TYPE_LAKE_SHORE:
+		return true
+	# 然后检查噪声，预判这个位置是否会成为湖泊
+	return _is_lake_noise_at(world_coord)
+
 func _local_to_world(local_pos: Vector2i, p_chunk_coord: Vector2i) -> Vector2i:
 	var world_start_x = p_chunk_coord.x * CHUNK_SIZE
 	var world_start_y = p_chunk_coord.y * CHUNK_SIZE
@@ -648,12 +707,12 @@ func update_canvas_rendering():
 	var center_world_y = int(world_pos.y / 32.0) # Assuming 32.0 is tile size for player pos
 	
 	# 计算渲染区域的世界坐标范围
-	var render_start_x = center_world_x - int(MAP_SIZE / 2.0)
-	var render_start_y = center_world_y - int(MAP_SIZE / 2.0)
+	var render_start_x = center_world_x - int(map_size_x / 2.0)
+	var render_start_y = center_world_y - int(map_size_y / 2.0)
 	
 	# 绘制地形
-	for x_canvas in range(MAP_SIZE): # Renamed to x_canvas for clarity
-		for y_canvas in range(MAP_SIZE): # Renamed to y_canvas for clarity
+	for x_canvas in range(map_size_x): # Renamed to x_canvas for clarity
+		for y_canvas in range(map_size_y): # Renamed to y_canvas for clarity
 			var world_x = render_start_x + x_canvas
 			var world_y = render_start_y + y_canvas
 			var world_coord = Vector2i(world_x, world_y)
@@ -679,7 +738,7 @@ func update_canvas_rendering():
 				draw_cell_at_canvas_pos(Vector2i(x_canvas, y_canvas), color_to_draw)
 	
 	# 绘制玩家（始终在画布中心）
-	var player_canvas_pos = Vector2i(int(MAP_SIZE / 2.0), int(MAP_SIZE / 2.0))
+	var player_canvas_pos = Vector2i(int(map_size_x / 2.0), int(map_size_y / 2.0))
 	draw_cell_at_canvas_pos(player_canvas_pos, PLAYER_COLOR)
 	
 	canvas_texture.set_image(canvas_image)
@@ -687,7 +746,7 @@ func update_canvas_rendering():
 
 func draw_cell_at_canvas_pos(canvas_pos: Vector2i, color: Color):
 	"""在画布指定位置绘制一个格子"""
-	if canvas_pos.x < 0 or canvas_pos.x >= MAP_SIZE or canvas_pos.y < 0 or canvas_pos.y >= MAP_SIZE:
+	if canvas_pos.x < 0 or canvas_pos.x >= map_size_x or canvas_pos.y < 0 or canvas_pos.y >= map_size_y:
 		return
 	
 	var pixel_x = canvas_pos.x * CELL_SIZE
@@ -697,7 +756,7 @@ func draw_cell_at_canvas_pos(canvas_pos: Vector2i, color: Color):
 		for dy in range(CELL_SIZE):
 			var px = pixel_x + dx
 			var py = pixel_y + dy
-			if px < CANVAS_SIZE and py < CANVAS_SIZE:
+			if px < canvas_size_x and py < canvas_size_y:
 				canvas_image.set_pixel(px, py, color)
 
 func _draw():
@@ -716,6 +775,7 @@ func get_debug_info() -> String:
 	var local_x = world_grid_x - current_chunk.x * CHUNK_SIZE
 	var local_y = world_grid_y - current_chunk.y * CHUNK_SIZE
 	
-	return "玩家世界位置: (%d, %d), 当前区块: %s, 区块内位置: (%d, %d), 已生成区块数: %d" % [
-		world_grid_x, world_grid_y, str(current_chunk), local_x, local_y, generated_chunks.size()
+	return "玩家世界位置: (%d, %d), 当前区块: %s, 区块内位置: (%d, %d), 已生成区块数: %d\n视野大小: %dx%d 格子, 画布: %dx%d 像素" % [
+		world_grid_x, world_grid_y, str(current_chunk), local_x, local_y, generated_chunks.size(),
+		map_size_x, map_size_y, canvas_size_x, canvas_size_y
 	]

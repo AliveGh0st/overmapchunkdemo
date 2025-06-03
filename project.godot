@@ -19,6 +19,11 @@ config/icon="res://icon.svg"
 
 file_logging/enable_file_logging=true
 
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+
 [editor]
 
 script/search_in_file_extensions=PackedStringArray("gd", "cs")
