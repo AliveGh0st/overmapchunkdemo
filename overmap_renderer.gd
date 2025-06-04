@@ -19,7 +19,7 @@ const PLAYER_COLOR = Color.RED
 const RIVER_COLOR = Color.BLUE # 河流颜色
 const DEBUG_RIVER_START_END_COLOR = Color.BLACK # 调试颜色
 const LAKE_SURFACE_COLOR = Color.BLUE # 湖泊表面颜色
-const LAKE_SHORE_COLOR = Color.BLUE # 湖岸颜色，蓝色
+const LAKE_SHORE_COLOR = Color.SEA_GREEN # 湖岸颜色，深蓝色
 
 # 地形类型
 const TERRAIN_TYPE_EMPTY = 0
