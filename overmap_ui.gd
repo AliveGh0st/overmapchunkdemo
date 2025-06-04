@@ -14,12 +14,13 @@ func _ready():
 		overmap_manager = get_node("../OvermapRenderer")
 	
 	if not overmap_manager:
-		print("警告：未找到OvermapManager")
+		pass  # 静默处理，不输出警告
 	else:
-		print("成功找到OvermapManager")
+		pass  # 静默处理，不输出成功信息
 
 func _process(_delta):
-	if overmap_manager and debug_label and overmap_manager.has_method("get_debug_info"):
-		debug_label.text = overmap_manager.get_debug_info()
-		debug_label.text += "\n使用WASD或方向键移动玩家"
-		debug_label.text += "\n当玩家距离边缘11格时会自动创建新区块"
+	if overmap_manager and debug_label and overmap_manager.has_method("get_simple_info"):
+		debug_label.text = overmap_manager.get_simple_info()
+		debug_label.text += "\n\n控制说明："
+		debug_label.text += "\nWASD或方向键 - 移动玩家"
+		debug_label.text += "\n地图会自动扩展"

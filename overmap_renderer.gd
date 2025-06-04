@@ -71,9 +71,7 @@ func update_viewport_size():
 	canvas_size_x = map_size_x * CELL_SIZE
 	canvas_size_y = map_size_y * CELL_SIZE
 	
-	print("视口大小更新: %dx%d 像素, 地图格子: %dx%d, 画布: %dx%d" % [
-		viewport_size.x, viewport_size.y, map_size_x, map_size_y, canvas_size_x, canvas_size_y
-	])
+	# 静默更新视口大小，移除控制台输出
 
 func _on_viewport_size_changed():
 	"""当视口大小变化时重新计算并重新创建画布"""
@@ -85,9 +83,7 @@ func _on_viewport_size_changed():
 	# 只有当画布尺寸实际发生变化时才重新创建画布
 	if canvas_size_x != old_canvas_size_x or canvas_size_y != old_canvas_size_y:
 		setup_canvas()
-		print("画布尺寸变化，重新创建画布: %dx%d -> %dx%d" % [
-			old_canvas_size_x, old_canvas_size_y, canvas_size_x, canvas_size_y
-		])
+		# 静默重新创建画布，移除控制台输出
 
 func _ready():
 	add_to_group("overmap_manager")
@@ -102,7 +98,7 @@ func _ready():
 	await get_tree().process_frame
 	player_ref = get_tree().get_first_node_in_group("player")
 	if not player_ref:
-		print("警告：未找到玩家节点")
+		# 静默处理玩家未找到的情况
 		return
 	
 	# 生成初始区块（0,0区块）
@@ -934,7 +930,22 @@ func _draw():
 	if canvas_texture:
 		draw_texture(canvas_texture, Vector2.ZERO)
 
+func get_simple_info() -> String:
+	"""返回简化的玩家位置信息，移除详细的调试数据"""
+	var world_pos = player_ref.global_position if player_ref else Vector2.ZERO
+	var world_grid_x = int(world_pos.x / 32.0)
+	var world_grid_y = int(world_pos.y / 32.0)
+	var current_chunk = Vector2i(
+		int(floor(float(world_grid_x) / CHUNK_SIZE)),
+		int(floor(float(world_grid_y) / CHUNK_SIZE))
+	)
+	
+	return "位置: (%d, %d)\n区块: (%d, %d)" % [
+		world_grid_x, world_grid_y, current_chunk.x, current_chunk.y
+	]
+
 func get_debug_info() -> String:
+	"""保留原有的详细调试信息方法，供开发时使用"""
 	var world_pos = player_ref.global_position if player_ref else Vector2.ZERO
 	var world_grid_x = int(world_pos.x / 32.0)
 	var world_grid_y = int(world_pos.y / 32.0)
