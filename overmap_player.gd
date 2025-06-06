@@ -2,10 +2,10 @@ extends CharacterBody2D
 
 # 改进的玩家控制器，专门为overmap系统设计
 
-# 格子大小（像素）
-@export var tile_size: int = 32
+# 格子大小（像素）- 应与OvermapRenderer.TILE_SIZE保持一致
+const TILE_SIZE: int = 4
 # 移动速度（像素/秒）
-@export var movement_speed: float = 3000.0
+@export var movement_speed: float = 300.0
 # 是否启用格子对齐
 @export var grid_aligned: bool = true
 
@@ -16,8 +16,8 @@ func _ready():
 	# 计算区块中心的网格坐标，然后转换为像素位置
 	var chunk_center_grid = 180.0 / 2.0  # 90格子
 	global_position = Vector2(
-		chunk_center_grid * tile_size + tile_size / 2.0,
-		chunk_center_grid * tile_size + tile_size / 2.0
+		chunk_center_grid * TILE_SIZE + TILE_SIZE / 2.0,
+		chunk_center_grid * TILE_SIZE + TILE_SIZE / 2.0
 	)
 	
 	# 如果启用格子对齐，调整到最近的格子中心
@@ -28,17 +28,20 @@ func _ready():
 	var collision_shape = $CollisionShape2D
 	if collision_shape:
 		var rect_shape = RectangleShape2D.new()
-		rect_shape.size = Vector2(tile_size, tile_size)
+		rect_shape.size = Vector2(TILE_SIZE, TILE_SIZE)
 		collision_shape.shape = rect_shape
 	
-	# 给精灵添加一个简单的颜色矩形
+	# 给精灵添加一个简单的颜色矩形（通常应该隐藏，因为玩家在地图上由OvermapRenderer渲染）
 	var sprite = $Sprite2D
 	if sprite:
-		var texture = ImageTexture.new()
-		var image = Image.create(tile_size, tile_size, false, Image.FORMAT_RGBA8)
-		image.fill(Color.BLUE)
-		texture.set_image(image)
-		sprite.texture = texture
+		# 隐藏玩家精灵，因为玩家的视觉表示由OvermapRenderer处理
+		sprite.visible = false
+		# 可选：如果需要调试，可以创建一个小的透明标记
+		# var texture = ImageTexture.new()
+		# var image = Image.create(TILE_SIZE, TILE_SIZE, false, Image.FORMAT_RGBA8)
+		# image.fill(Color(1, 1, 1, 0.1))  # 几乎透明的白色
+		# texture.set_image(image)
+		# sprite.texture = texture
 
 func _physics_process(_delta):
 	# 获取输入向量
@@ -71,17 +74,17 @@ func snap_to_grid():
 	"""将玩家位置对齐到最近的格子中心"""
 	# 计算最近的网格中心位置
 	# 先减去半个格子大小，然后取整，再加回半个格子大小
-	var grid_x = round((global_position.x - tile_size / 2.0) / tile_size)
-	var grid_y = round((global_position.y - tile_size / 2.0) / tile_size)
+	var grid_x = round((global_position.x - TILE_SIZE / 2.0) / TILE_SIZE)
+	var grid_y = round((global_position.y - TILE_SIZE / 2.0) / TILE_SIZE)
 	
 	global_position = Vector2(
-		grid_x * tile_size + tile_size / 2.0,
-		grid_y * tile_size + tile_size / 2.0
+		grid_x * TILE_SIZE + TILE_SIZE / 2.0,
+		grid_y * TILE_SIZE + TILE_SIZE / 2.0
 	)
 
 # 获取玩家在overmap网格中的位置
 func get_grid_position() -> Vector2i:
 	return Vector2i(
-		round((global_position.x - tile_size / 2.0) / tile_size),
-		round((global_position.y - tile_size / 2.0) / tile_size)
+		round((global_position.x - TILE_SIZE / 2.0) / TILE_SIZE),
+		round((global_position.y - TILE_SIZE / 2.0) / TILE_SIZE)
 	)

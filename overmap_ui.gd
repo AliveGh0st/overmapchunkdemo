@@ -7,11 +7,11 @@ class_name OvermapUI
 var overmap_manager: Node
 
 func _ready():
-	# 查找OvermapManager
+	# 查找OvermapRenderer
 	overmap_manager = get_tree().get_first_node_in_group("overmap_manager")
 	if not overmap_manager:
-		# 如果没有找到群组，尝试通过节点路径查找
-		overmap_manager = get_node("../OvermapRenderer")
+		# 通过节点路径查找 - 现在UI在CanvasLayer下，需要向上两级再找到OvermapRenderer
+		overmap_manager = get_node("../../OvermapRenderer")
 	
 	if not overmap_manager:
 		pass  # 静默处理，不输出警告

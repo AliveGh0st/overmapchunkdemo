@@ -1,4 +1,4 @@
-extends Control
+extends Node2D
 class_name OvermapRenderer
 
 # 连续地图overmap渲染器
@@ -6,13 +6,18 @@ class_name OvermapRenderer
 # 地图设置
 var map_size_x: int  # 动态计算的渲染区域宽度（格子数）
 var map_size_y: int  # 动态计算的渲染区域高度（格子数）
-const CELL_SIZE = 8   # 每个格子的像素大小
+const CELL_SIZE = 8   # 每个格子的像素大小（用于视口计算）
+const TILE_SIZE = 4  # TileMap中每个瓦片的像素大小（游戏世界格子大小）
 const BORDER_THRESHOLD = 11  # 距离边缘11格时创建新区块
 var canvas_size_x: int  # 动态计算的画布宽度（像素）
 var canvas_size_y: int  # 动态计算的画布高度（像素）
 const CHUNK_SIZE = 180  # 区块大小
 
-# 颜色设置
+# TileMapLayer相关
+var tile_map_layer: TileMapLayer
+var tile_set_resource: TileSet
+
+# 颜色设置（保留用于创建瓦片）
 const TERRAIN_COLOR = Color.GREEN
 const EMPTY_COLOR = Color.BLACK
 const PLAYER_COLOR = Color.RED
@@ -21,13 +26,23 @@ const DEBUG_RIVER_START_END_COLOR = Color.BLACK # 调试颜色
 const LAKE_SURFACE_COLOR = Color.BLUE # 湖泊表面颜色
 const LAKE_SHORE_COLOR = Color.SEA_GREEN # 湖岸颜色，深蓝色
 
-# 地形类型
+# 地形类型和对应的瓦片ID
 const TERRAIN_TYPE_EMPTY = 0
 const TERRAIN_TYPE_LAND = 1
 const TERRAIN_TYPE_RIVER = 2
 const TERRAIN_TYPE_DEBUG_RIVER_START_END = 3 # 调试地形类型
 const TERRAIN_TYPE_LAKE_SURFACE = 4 # 湖泊表面
 const TERRAIN_TYPE_LAKE_SHORE = 5 # 湖岸
+
+# 地形类型到瓦片ID的映射
+const TERRAIN_TO_TILE_ID = {
+	TERRAIN_TYPE_EMPTY: -1,  # 不放置瓦片
+	TERRAIN_TYPE_LAND: 0,
+	TERRAIN_TYPE_RIVER: 1,
+	TERRAIN_TYPE_DEBUG_RIVER_START_END: 2,
+	TERRAIN_TYPE_LAKE_SURFACE: 3,
+	TERRAIN_TYPE_LAKE_SHORE: 4
+}
 # 新增河流生成参数
 const RIVER_DENSITY_PARAM = 1 # 对应 C++ settings->river_scale, 0.0 表示无河流. 值越小河越多但可能越细, 值越大河越少但可能越宽.
 								# 例如 0.5 -> chance_divider=2, brush_size=1. 2.0 -> chance_divider=1, brush_size=2.
@@ -54,13 +69,13 @@ var player_blink_timer: float = 0.0
 var player_visible: bool = true
 const PLAYER_BLINK_INTERVAL: float = 0.1  # 闪烁间隔（秒）
 
-# 渲染变量
-var canvas_texture: ImageTexture
-var canvas_image: Image
+# 渲染变量 - 使用TileMapLayer
+var player_marker_tile_pos: Vector2i = Vector2i(-999999, -999999)  # 玩家标记瓦片位置
 
 # 渲染优化变量
 var last_render_world_pos: Vector2i = Vector2i(-999999, -999999)  # 上次渲染时的玩家世界位置
 var render_dirty: bool = true  # 是否需要重新渲染
+var rendered_area: Rect2i = Rect2i()  # 当前已渲染的区域
 
 # 湖泊噪声生成器
 var lake_noise: FastNoiseLite
@@ -80,21 +95,21 @@ func update_viewport_size():
 	# 静默更新视口大小，移除控制台输出
 
 func _on_viewport_size_changed():
-	"""当视口大小变化时重新计算并重新创建画布"""
+	"""当视口大小变化时重新计算"""
 	var old_canvas_size_x = canvas_size_x
 	var old_canvas_size_y = canvas_size_y
 	
 	update_viewport_size()
 	
-	# 只有当画布尺寸实际发生变化时才重新创建画布
+	# 只有当画布尺寸实际发生变化时才标记需要重新渲染
 	if canvas_size_x != old_canvas_size_x or canvas_size_y != old_canvas_size_y:
-		setup_canvas()
-		# 静默重新创建画布，移除控制台输出
+		render_dirty = true
+		# 静默重新计算渲染区域，移除控制台输出
 
 func _ready():
 	add_to_group("overmap_manager")
 	update_viewport_size()  # 计算视野大小
-	setup_canvas()
+	setup_tilemap()
 	setup_lake_noise()
 	
 	# 监听窗口大小变化
@@ -127,11 +142,11 @@ func _process(delta):
 	# 检查玩家位置，必要时生成新区块
 	check_and_generate_chunks()
 	
-	# 获取当前玩家世界位置
+	# 获取当前玩家世界位置（以游戏世界格子为单位，每格TILE_SIZE像素）
 	var world_pos = player_ref.global_position
 	var current_world_pos = Vector2i(
-		int(world_pos.x / 32.0),
-		int(world_pos.y / 32.0)
+		int(world_pos.x / TILE_SIZE),
+		int(world_pos.y / TILE_SIZE)
 	)
 	
 	# 只有当玩家位置发生变化或标记为dirty时才重新渲染
@@ -140,12 +155,82 @@ func _process(delta):
 		render_dirty = false
 		update_canvas_rendering()
 
-func setup_canvas():
-	"""初始化画布"""
-	canvas_image = Image.create(canvas_size_x, canvas_size_y, false, Image.FORMAT_RGB8)
-	canvas_texture = ImageTexture.new()
-	canvas_texture.set_image(canvas_image)
+func setup_tilemap():
+	"""初始化TileMapLayer"""
+	# 创建TileMapLayer节点
+	tile_map_layer = TileMapLayer.new()
+	add_child(tile_map_layer)
+	
+	# 创建TileSet
+	tile_set_resource = create_terrain_tileset()
+	tile_map_layer.tile_set = tile_set_resource
+	
+	print("TileMapLayer created with tile_size: ", tile_set_resource.tile_size)
+	print("TileMapLayer position: ", tile_map_layer.position)
+	
 	render_dirty = true  # 标记需要重新渲染
+
+func create_terrain_tileset() -> TileSet:
+	"""创建地形TileSet资源"""
+	var tileset = TileSet.new()
+	# TileMapLayer的瓦片大小应该与游戏世界格子大小匹配
+	tileset.tile_size = Vector2i(TILE_SIZE, TILE_SIZE)  # 使用TILE_SIZE常量
+	
+	# 创建TileSetAtlasSource
+	var atlas_source = TileSetAtlasSource.new()
+	
+	# 为每种地形类型创建一个纹理
+	var terrain_colors = [
+		TERRAIN_COLOR,          # TERRAIN_TYPE_LAND = 0
+		RIVER_COLOR,            # TERRAIN_TYPE_RIVER = 1
+		DEBUG_RIVER_START_END_COLOR,  # TERRAIN_TYPE_DEBUG_RIVER_START_END = 2
+		LAKE_SURFACE_COLOR,     # TERRAIN_TYPE_LAKE_SURFACE = 3
+		LAKE_SHORE_COLOR,       # TERRAIN_TYPE_LAKE_SHORE = 4
+		PLAYER_COLOR            # 玩家标记 = 5
+	]
+	
+	# 创建一个包含所有颜色的纹理图集，每个瓦片TILE_SIZE像素
+	var tile_pixel_size = TILE_SIZE
+	var atlas_image = Image.create(tile_pixel_size, tile_pixel_size * terrain_colors.size(), false, Image.FORMAT_RGBA8)
+	
+	for i in range(terrain_colors.size()):
+		var color = terrain_colors[i]
+		var start_y = i * tile_pixel_size
+		
+		# 绘制圆形而不是矩形
+		var center_x = tile_pixel_size / 2.0
+		var center_y = tile_pixel_size / 2.0
+		var radius = tile_pixel_size / 2.0 - 0.5  # 稍微小一点以避免边缘问题
+		
+		# 先填充透明背景
+		for x in range(tile_pixel_size):
+			for y in range(tile_pixel_size):
+				atlas_image.set_pixel(x, start_y + y, Color(0, 0, 0, 0))  # 透明背景
+		
+		# 绘制圆形
+		for x in range(tile_pixel_size):
+			for y in range(tile_pixel_size):
+				var dx = x - center_x
+				var dy = y - center_y
+				var distance = sqrt(dx * dx + dy * dy)
+				
+				if distance <= radius:
+					atlas_image.set_pixel(x, start_y + y, color)
+	
+	var atlas_texture = ImageTexture.new()
+	atlas_texture.set_image(atlas_image)
+	atlas_source.texture = atlas_texture
+	atlas_source.texture_region_size = Vector2i(tile_pixel_size, tile_pixel_size)
+	
+	# 为每种地形添加瓦片
+	for i in range(terrain_colors.size()):
+		var atlas_coords = Vector2i(0, i)
+		atlas_source.create_tile(atlas_coords)
+		var _tile_data = atlas_source.get_tile_data(atlas_coords, 0)
+		# 可以在这里设置瓦片的额外属性
+		
+	tileset.add_source(atlas_source, 0)
+	return tileset
 
 func setup_lake_noise():
 	"""初始化湖泊噪声生成器"""
@@ -162,8 +247,8 @@ func check_and_generate_chunks():
 		return
 	
 	var world_pos = player_ref.global_position
-	var world_grid_x = int(world_pos.x / 32.0)
-	var world_grid_y = int(world_pos.y / 32.0)
+	var world_grid_x = int(world_pos.x / TILE_SIZE)
+	var world_grid_y = int(world_pos.y / TILE_SIZE)
 	
 	# 计算玩家当前所在的区块
 	var current_chunk = Vector2i(
@@ -231,6 +316,8 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	var world_start_x = chunk_coord.x * CHUNK_SIZE
 	var world_start_y = chunk_coord.y * CHUNK_SIZE
 	
+	print("Generating chunk at: ", chunk_coord, " world start: ", Vector2i(world_start_x, world_start_y))
+	
 	# 生成区块内的地形（默认为土地）
 	for x_local in range(CHUNK_SIZE): # Renamed to x_local for clarity
 		for y_local in range(CHUNK_SIZE): # Renamed to y_local for clarity
@@ -238,6 +325,8 @@ func generate_chunk_at(chunk_coord: Vector2i):
 			var world_y = world_start_y + y_local
 			
 			terrain_data[Vector2i(world_x, world_y)] = TERRAIN_TYPE_LAND # 修正：设置为土地类型
+	
+	print("Generated terrain data for chunk ", chunk_coord, " - terrain_data size: ", terrain_data.size())
 	
 	# 在基础地形生成后，尝试生成河流
 	# 注意：河流生成时会检查湖泊噪声，避免在将来会成为湖泊的位置生成河流
@@ -829,90 +918,162 @@ func _apply_river_brush_at_world_point(center_world: Vector2i, brush_factor: int
 # === 湖泊生成系统结束 ===
 
 func update_canvas_rendering():
-	canvas_image.fill(EMPTY_COLOR)
-	
+	"""更新TileMapLayer渲染"""
 	# 获取玩家当前位置，计算渲染范围
 	var world_pos = player_ref.global_position
-	var center_world_x = int(world_pos.x / 32.0) # Assuming 32.0 is tile size for player pos
-	var center_world_y = int(world_pos.y / 32.0) # Assuming 32.0 is tile size for player pos
+	var center_world_x = int(world_pos.x / TILE_SIZE) # TILE_SIZE像素=1个游戏世界格子
+	var center_world_y = int(world_pos.y / TILE_SIZE) # TILE_SIZE像素=1个游戏世界格子
 	
-	# 计算渲染区域的世界坐标范围
-	var render_start_x = center_world_x - int(map_size_x / 2.0)
-	var render_start_y = center_world_y - int(map_size_y / 2.0)
+	# 计算当前可见区域（基于视口大小，转换为游戏世界格子数）
+	# 视口大小除以TILE_SIZE（游戏世界格子大小）得到可见的游戏格子数量
+	var viewport_size = get_viewport().get_visible_rect().size
+	var half_view_tiles_x = int(viewport_size.x / (TILE_SIZE * 2)) + 5  # 每个瓦片TILE_SIZE像素，添加缓冲区
+	var half_view_tiles_y = int(viewport_size.y / (TILE_SIZE * 2)) + 5  # 每个瓦片TILE_SIZE像素，添加缓冲区
 	
-	# 绘制地形
-	for x_canvas in range(map_size_x): # Renamed to x_canvas for clarity
-		for y_canvas in range(map_size_y): # Renamed to y_canvas for clarity
-			var world_x = render_start_x + x_canvas
-			var world_y = render_start_y + y_canvas
-			var world_coord = Vector2i(world_x, world_y)
-			
-			var terrain_type = terrain_data.get(world_coord, TERRAIN_TYPE_EMPTY)
-			
-			var color_to_draw = EMPTY_COLOR
-			match terrain_type:
-				TERRAIN_TYPE_LAND:
-					color_to_draw = TERRAIN_COLOR
-				TERRAIN_TYPE_RIVER:
-					color_to_draw = RIVER_COLOR
-				TERRAIN_TYPE_DEBUG_RIVER_START_END: # 新增
-					color_to_draw = DEBUG_RIVER_START_END_COLOR
-				TERRAIN_TYPE_LAKE_SURFACE:
-					color_to_draw = LAKE_SURFACE_COLOR
-				TERRAIN_TYPE_LAKE_SHORE:
-					color_to_draw = LAKE_SHORE_COLOR
-			
-			# Only draw if not empty, or handle EMPTY_COLOR explicitly if needed
-			# The fill operation already set it to EMPTY_COLOR
-			if terrain_type != TERRAIN_TYPE_EMPTY:
-				draw_cell_at_canvas_pos(Vector2i(x_canvas, y_canvas), color_to_draw)
+	var render_start_x = center_world_x - half_view_tiles_x
+	var render_start_y = center_world_y - half_view_tiles_y
+	var render_end_x = center_world_x + half_view_tiles_x
+	var render_end_y = center_world_y + half_view_tiles_y
 	
-	# 绘制玩家（始终在画布中心）- 添加闪烁效果
-	if player_visible:
-		var player_canvas_pos = Vector2i(int(map_size_x / 2.0), int(map_size_y / 2.0))
-		draw_cell_at_canvas_pos(player_canvas_pos, PLAYER_COLOR)
+	var new_render_area = Rect2i(render_start_x, render_start_y, 
+								render_end_x - render_start_x, 
+								render_end_y - render_start_y)
 	
-	canvas_texture.set_image(canvas_image)
-	queue_redraw()
+	# 只更新发生变化的区域
+	if rendered_area != new_render_area:
+		# 清除不再可见的区域
+		clear_tiles_outside_area(new_render_area)
+		
+		# 绘制新的可见区域
+		render_terrain_in_area(new_render_area)
+		
+		rendered_area = new_render_area
+	
+	# 更新玩家标记
+	update_player_marker(center_world_x, center_world_y)
 
-func draw_cell_at_canvas_pos(canvas_pos: Vector2i, color: Color):
-	"""在画布指定位置绘制一个圆形格子"""
-	if canvas_pos.x < 0 or canvas_pos.x >= map_size_x or canvas_pos.y < 0 or canvas_pos.y >= map_size_y:
+func clear_tiles_outside_area(new_area: Rect2i):
+	"""清除不在新渲染区域内的瓦片"""
+	if rendered_area.size == Vector2i.ZERO:
 		return
 	
-	var pixel_x = canvas_pos.x * CELL_SIZE
-	var pixel_y = canvas_pos.y * CELL_SIZE
+	# 计算需要清除的区域
+	var areas_to_clear: Array[Rect2i] = []
 	
-	# 计算圆形参数
-	var center_x = pixel_x + CELL_SIZE / 2.0
-	var center_y = pixel_y + CELL_SIZE / 2.0
-	var radius = CELL_SIZE / 2.0 - 0.5  # 稍微小一点，避免圆形过大
+	# 如果新区域完全不重叠，清除整个旧区域
+	if not rendered_area.intersects(new_area):
+		areas_to_clear.append(rendered_area)
+	else:
+		# 计算不重叠的部分
+		# 左侧
+		if rendered_area.position.x < new_area.position.x:
+			areas_to_clear.append(Rect2i(
+				rendered_area.position.x,
+				rendered_area.position.y,
+				new_area.position.x - rendered_area.position.x,
+				rendered_area.size.y
+			))
+		
+		# 右侧
+		if rendered_area.position.x + rendered_area.size.x > new_area.position.x + new_area.size.x:
+			areas_to_clear.append(Rect2i(
+				new_area.position.x + new_area.size.x,
+				rendered_area.position.y,
+				(rendered_area.position.x + rendered_area.size.x) - (new_area.position.x + new_area.size.x),
+				rendered_area.size.y
+			))
+		
+		# 上方
+		if rendered_area.position.y < new_area.position.y:
+			var left_x = max(rendered_area.position.x, new_area.position.x)
+			var right_x = min(rendered_area.position.x + rendered_area.size.x, new_area.position.x + new_area.size.x)
+			areas_to_clear.append(Rect2i(
+				left_x,
+				rendered_area.position.y,
+				right_x - left_x,
+				new_area.position.y - rendered_area.position.y
+			))
+		
+		# 下方
+		if rendered_area.position.y + rendered_area.size.y > new_area.position.y + new_area.size.y:
+			var left_x = max(rendered_area.position.x, new_area.position.x)
+			var right_x = min(rendered_area.position.x + rendered_area.size.x, new_area.position.x + new_area.size.x)
+			areas_to_clear.append(Rect2i(
+				left_x,
+				new_area.position.y + new_area.size.y,
+				right_x - left_x,
+				(rendered_area.position.y + rendered_area.size.y) - (new_area.position.y + new_area.size.y)
+			))
 	
-	# 绘制圆形
-	for dx in range(CELL_SIZE):
-		for dy in range(CELL_SIZE):
-			var px = pixel_x + dx
-			var py = pixel_y + dy
-			if px < canvas_size_x and py < canvas_size_y:
-				# 计算当前像素到圆心的距离
-				var dist_x = px + 0.5 - center_x
-				var dist_y = py + 0.5 - center_y
-				var distance = sqrt(dist_x * dist_x + dist_y * dist_y)
-				
-				# 如果距离小于等于半径，则绘制这个像素
-				if distance <= radius:
-					canvas_image.set_pixel(px, py, color)
+	# 清除这些区域的瓦片
+	for area in areas_to_clear:
+		for x in range(area.position.x, area.position.x + area.size.x):
+			for y in range(area.position.y, area.position.y + area.size.y):
+				tile_map_layer.erase_cell(Vector2i(x, y))
 
-func _draw():
-	"""绘制画布"""
-	if canvas_texture:
-		draw_texture(canvas_texture, Vector2.ZERO)
+func render_terrain_in_area(area: Rect2i):
+	"""在指定区域渲染地形"""
+	var tiles_rendered = 0
+	for x in range(area.position.x, area.position.x + area.size.x):
+		for y in range(area.position.y, area.position.y + area.size.y):
+			var world_coord = Vector2i(x, y)
+			var terrain_type = terrain_data.get(world_coord, TERRAIN_TYPE_EMPTY)
+			set_tile_at_world_pos(world_coord, terrain_type)
+			if terrain_type != TERRAIN_TYPE_EMPTY:
+				tiles_rendered += 1
+	
+	# 调试输出
+	if tiles_rendered > 0:
+		print("Rendered %d tiles in area: %s" % [tiles_rendered, area])
+
+func set_tile_at_world_pos(world_pos: Vector2i, terrain_type: int):
+	"""在世界坐标位置设置瓦片"""
+	if terrain_type == TERRAIN_TYPE_EMPTY:
+		tile_map_layer.erase_cell(world_pos)
+	else:
+		var tile_id = TERRAIN_TO_TILE_ID.get(terrain_type, 0)
+		# 确保tile_id在有效范围内
+		if tile_id >= 0:
+			tile_map_layer.set_cell(world_pos, 0, Vector2i(0, tile_id))
+
+func update_player_marker(world_x: int, world_y: int):
+	"""更新玩家标记"""
+	var new_player_pos = Vector2i(world_x, world_y)
+	
+	# 调试输出
+	print("Player marker at: ", new_player_pos, " visible: ", player_visible)
+	
+	# 如果位置没有变化，只需要处理闪烁
+	if new_player_pos == player_marker_tile_pos:
+		if player_visible:
+			tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 5))  # 玩家用红色瓦片（索引5）
+			print("Set player tile visible at: ", player_marker_tile_pos)
+		else:
+			# 显示原始地形
+			var terrain_type = terrain_data.get(player_marker_tile_pos, TERRAIN_TYPE_EMPTY)
+			set_tile_at_world_pos(player_marker_tile_pos, terrain_type)
+			print("Set terrain tile at player pos: ", player_marker_tile_pos, " type: ", terrain_type)
+		return
+	
+	# 恢复旧位置的地形
+	if player_marker_tile_pos != Vector2i(-999999, -999999):
+		var old_terrain_type = terrain_data.get(player_marker_tile_pos, TERRAIN_TYPE_EMPTY)
+		set_tile_at_world_pos(player_marker_tile_pos, old_terrain_type)
+		print("Restored old position: ", player_marker_tile_pos, " type: ", old_terrain_type)
+	
+	# 设置新位置
+	player_marker_tile_pos = new_player_pos
+	if player_visible:
+		tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 5))  # 玩家标记
+		print("Set new player position: ", player_marker_tile_pos)
+
+# TileMapLayer渲染不需要自定义_draw方法
 
 func get_simple_info() -> String:
 	"""返回简化的玩家位置信息，移除详细的调试数据"""
 	var world_pos = player_ref.global_position if player_ref else Vector2.ZERO
-	var world_grid_x = int(world_pos.x / 32.0)
-	var world_grid_y = int(world_pos.y / 32.0)
+	var world_grid_x = int(world_pos.x / TILE_SIZE)
+	var world_grid_y = int(world_pos.y / TILE_SIZE)
 	var current_chunk = Vector2i(
 		int(floor(float(world_grid_x) / CHUNK_SIZE)),
 		int(floor(float(world_grid_y) / CHUNK_SIZE))
@@ -925,8 +1086,8 @@ func get_simple_info() -> String:
 func get_debug_info() -> String:
 	"""保留原有的详细调试信息方法，供开发时使用"""
 	var world_pos = player_ref.global_position if player_ref else Vector2.ZERO
-	var world_grid_x = int(world_pos.x / 32.0)
-	var world_grid_y = int(world_pos.y / 32.0)
+	var world_grid_x = int(world_pos.x / TILE_SIZE)
+	var world_grid_y = int(world_pos.y / TILE_SIZE)
 	var current_chunk = Vector2i(
 		int(floor(float(world_grid_x) / CHUNK_SIZE)),
 		int(floor(float(world_grid_y) / CHUNK_SIZE))

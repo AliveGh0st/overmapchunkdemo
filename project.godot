@@ -18,11 +18,12 @@ config/icon="res://icon.svg"
 [debug]
 
 file_logging/enable_file_logging=true
+gdscript/warnings/empty_file=0
 
 [display]
 
-window/size/viewport_width=1920
-window/size/viewport_height=1080
+window/size/viewport_width=1600
+window/size/viewport_height=800
 
 [editor]
 
