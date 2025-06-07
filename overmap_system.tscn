@@ -26,6 +26,7 @@ shape = SubResource("RectangleShape2D_1")
 [node name="UILayer" type="CanvasLayer" parent="."]
 
 [node name="Background" type="ColorRect" parent="UILayer"]
+visible = false
 clip_contents = true
 anchors_preset = 15
 anchor_right = 1.0
