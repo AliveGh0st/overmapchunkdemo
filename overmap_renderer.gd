@@ -7,7 +7,7 @@ class_name OvermapRenderer
 var map_size_x: int  # 动态计算的渲染区域宽度（格子数）
 var map_size_y: int  # 动态计算的渲染区域高度（格子数）
 const CELL_SIZE = 8   # 每个格子的像素大小（用于视口计算）
-const TILE_SIZE = 4  # TileMap中每个瓦片的像素大小（游戏世界格子大小）
+const TILE_SIZE = 8  # TileMap中每个瓦片的像素大小（游戏世界格子大小）
 const BORDER_THRESHOLD = 11  # 距离边缘11格时创建新区块
 var canvas_size_x: int  # 动态计算的画布宽度（像素）
 var canvas_size_y: int  # 动态计算的画布高度（像素）
@@ -555,49 +555,49 @@ func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loc
 		# 朝向目标移动的逻辑 - 完全匹配C++
 		if pb_local.x > p2_local.x and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < pb_local.x - p2_local.x or \
 		   (randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > pb_local.x - p2_local.x and \
-		    randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(pb_local.y - p2_local.y))):
+			randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(pb_local.y - p2_local.y))):
 			p2_local.x += 1
 		if pb_local.x < p2_local.x and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < p2_local.x - pb_local.x or \
 		   (randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > p2_local.x - pb_local.x and \
-		    randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(pb_local.y - p2_local.y))):
+			randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(pb_local.y - p2_local.y))):
 			p2_local.x -= 1
 		if pb_local.y > p2_local.y and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < pb_local.y - p2_local.y or \
 		   (randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > pb_local.y - p2_local.y and \
-		    randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
+			randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
 			p2_local.y += 1
 		if pb_local.y < p2_local.y and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < p2_local.y - pb_local.y or \
 		   (randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > p2_local.y - pb_local.y and \
-		    randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
+			randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
 			p2_local.y -= 1
 		
-		# 第二个随机游走
-		p2_local.x += randi_range(-1, 1)
-		p2_local.y += randi_range(-1, 1)
-		if p2_local.x < 0:
-			p2_local.x = 0
-		if p2_local.x > CHUNK_SIZE - 1:
-			p2_local.x = CHUNK_SIZE - 2  # 注意：这里使用CHUNK_SIZE - 2，匹配C++的OMAPX-2
-		if p2_local.y < 0:
-			p2_local.y = 0
-		if p2_local.y > CHUNK_SIZE - 1:
-			p2_local.y = CHUNK_SIZE - 1
+		# # 第二个随机游走
+		# p2_local.x += randi_range(-1, 1)
+		# p2_local.y += randi_range(-1, 1)
+		# if p2_local.x < 0:
+		# 	p2_local.x = 0
+		# if p2_local.x > CHUNK_SIZE - 1:
+		# 	p2_local.x = CHUNK_SIZE - 2  # 注意：这里使用CHUNK_SIZE - 2，匹配C++的OMAPX-2
+		# if p2_local.y < 0:
+		# 	p2_local.y = 0
+		# if p2_local.y > CHUNK_SIZE - 1:
+		# 	p2_local.y = CHUNK_SIZE - 1
 		
-		# 第二个笔刷应用 - 包含复杂的边界检查逻辑
-		for i in range(-1 * river_scale, 1 * river_scale + 1):
-			for j in range(-1 * river_scale, 1 * river_scale + 1):
-				# We don't want our riverbanks touching the edge of the map for many reasons
-				var brush_point_local = p2_local + Vector2i(j, i)
+		# # 第二个笔刷应用 - 包含复杂的边界检查逻辑
+		# for i in range(-1 * river_scale, 1 * river_scale + 1):
+		# 	for j in range(-1 * river_scale, 1 * river_scale + 1):
+		# 		# We don't want our riverbanks touching the edge of the map for many reasons
+		# 		var brush_point_local = p2_local + Vector2i(j, i)
 				
-				# C++: if( inbounds( p, 1 ) || ( std::abs( pb.y() - p.y() ) < 4 && std::abs( pb.x() - p.x() ) < 4 ) )
-				var is_near_target = abs(pb_local.y - brush_point_local.y) < 4 and abs(pb_local.x - brush_point_local.x) < 4
-				if _is_inbounds_local(brush_point_local, 1) or is_near_target:
-					# C++: if( !inbounds( p ) ) continue;
-					if not _is_inbounds_local(brush_point_local, 0):
-						continue
+		# 		# C++: if( inbounds( p, 1 ) || ( std::abs( pb.y() - p.y() ) < 4 && std::abs( pb.x() - p.x() ) < 4 ) )
+		# 		var is_near_target = abs(pb_local.y - brush_point_local.y) < 4 and abs(pb_local.x - brush_point_local.x) < 4
+		# 		if _is_inbounds_local(brush_point_local, 2) or is_near_target:
+		# 			# C++: if( !inbounds( p ) ) continue;
+		# 			if not _is_inbounds_local(brush_point_local, 0):
+		# 				continue
 					
-					var world_coord = _local_to_world(brush_point_local, p_chunk_coord)
-					if not _is_lake_at(world_coord) and _one_in(river_chance):
-						terrain_data[world_coord] = TERRAIN_TYPE_RIVER
+		# 			var world_coord = _local_to_world(brush_point_local, p_chunk_coord)
+		# 			if not _is_lake_at(world_coord) and _one_in(river_chance):
+		# 				terrain_data[world_coord] = TERRAIN_TYPE_RIVER
 
 
 # --- Helper Functions for River Generation ---
@@ -767,6 +767,19 @@ func _connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord
 	if lake_points.size() < LAKE_RIVER_CONNECTION_MIN_SIZE:
 		return
 	
+	# 新增：检查湖泊是否已经与河流重叠
+	var lake_has_river = false
+	for lake_point in lake_points:
+		var terrain_type = terrain_data.get(lake_point, TERRAIN_TYPE_EMPTY)
+		if terrain_type == TERRAIN_TYPE_RIVER or terrain_type == TERRAIN_TYPE_DEBUG_RIVER_START_END:
+			lake_has_river = true
+			break
+	
+	# 如果湖泊已经包含河流，则不执行连接逻辑
+	if lake_has_river:
+		print("Lake already contains rivers, skipping connection logic")
+		return
+	
 	# C++: const auto connect_lake_to_closest_river = [&]( const point_om_omt & lake_connection_point ) { ... }
 	var connect_lake_to_closest_river = func(lake_connection_point: Vector2i):
 		var closest_distance = -1
@@ -863,7 +876,7 @@ func _place_river_between_points(start_point: Vector2i, end_point: Vector2i):
 	var p2 = start_point
 
 	while p2 != end_point:
-    	# 第一个随机游走和笔刷应用块
+		# 第一个随机游走和笔刷应用块
 		p2.x += randi_range(-1, 1)
 		p2.y += randi_range(-1, 1)
 		# 注意：这里没有边界限制，因为这是跨区块的河流连接
@@ -873,16 +886,16 @@ func _place_river_between_points(start_point: Vector2i, end_point: Vector2i):
 				var brush_point = p2 + Vector2i(j, i)
 				if _one_in(river_chance):
 					terrain_data[brush_point] = TERRAIN_TYPE_RIVER
-        
-        # 朝向目标移动的逻辑 - 完全匹配C++
+		
+		# 朝向目标移动的逻辑 - 完全匹配C++
 		var WORLD_SIZE_FACTOR = CHUNK_SIZE * 10
 		if end_point.x > p2.x and (randi_range(0, int(WORLD_SIZE_FACTOR * 1.2) - 1) < end_point.x - p2.x or \
-        	(randi_range(0, int(WORLD_SIZE_FACTOR * 0.2) - 1) > end_point.x - p2.x and \
-        	randi_range(0, int(WORLD_SIZE_FACTOR * 0.2) - 1) > abs(end_point.y - p2.y))):
+			(randi_range(0, int(WORLD_SIZE_FACTOR * 0.2) - 1) > end_point.x - p2.x and \
+			randi_range(0, int(WORLD_SIZE_FACTOR * 0.2) - 1) > abs(end_point.y - p2.y))):
 			p2.x += 1
 		if end_point.x < p2.x and (randi_range(0, int(WORLD_SIZE_FACTOR * 1.2) - 1) < p2.x - end_point.x or \
-    		(randi_range(0, int(WORLD_SIZE_FACTOR * 0.2) - 1) > p2.x - end_point.x and \
-        	randi_range(0, int(WORLD_SIZE_FACTOR * 0.2) - 1) > abs(end_point.y - p2.y))):
+			(randi_range(0, int(WORLD_SIZE_FACTOR * 0.2) - 1) > p2.x - end_point.x and \
+			randi_range(0, int(WORLD_SIZE_FACTOR * 0.2) - 1) > abs(end_point.y - p2.y))):
 			p2.x -= 1
 		if end_point.y > p2.y and (randi_range(0, int(WORLD_SIZE_FACTOR * 1.2) - 1) < end_point.y - p2.y or \
 			(randi_range(0, int(WORLD_SIZE_FACTOR * 0.2) - 1) > end_point.y - p2.y and \
@@ -892,8 +905,8 @@ func _place_river_between_points(start_point: Vector2i, end_point: Vector2i):
 			(randi_range(0, int(WORLD_SIZE_FACTOR * 0.2) - 1) > p2.y - end_point.y and \
 			randi_range(0, int(WORLD_SIZE_FACTOR * 0.2) - 1) > abs(p2.x - end_point.x))):
 			p2.y -= 1
-        
-        # 第二个随机游走
+		
+		# 第二个随机游走
 		p2.x += randi_range(-1, 1)
 		p2.y += randi_range(-1, 1)
 

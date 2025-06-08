@@ -9,6 +9,18 @@ size = Vector2(4, 4)
 
 [node name="OvermapSystem" type="Node2D"]
 
+[node name="BackgroundLayer" type="CanvasLayer" parent="."]
+layer = -1
+
+[node name="Background" type="ColorRect" parent="BackgroundLayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
+
 [node name="OvermapRenderer" type="Node2D" parent="."]
 script = ExtResource("1_renderer")
 
@@ -24,17 +36,6 @@ shape = SubResource("RectangleShape2D_1")
 [node name="Sprite2D" type="Sprite2D" parent="Player"]
 
 [node name="UILayer" type="CanvasLayer" parent="."]
-
-[node name="Background" type="ColorRect" parent="UILayer"]
-visible = false
-clip_contents = true
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-color = Color(0, 0, 0, 1)
 
 [node name="UI" type="Control" parent="UILayer"]
 layout_mode = 3
