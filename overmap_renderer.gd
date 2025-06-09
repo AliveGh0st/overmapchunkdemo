@@ -22,7 +22,6 @@ const TERRAIN_COLOR = Color.GREEN
 const EMPTY_COLOR = Color.BLACK
 const PLAYER_COLOR = Color.RED
 const RIVER_COLOR = Color.BLUE # 河流颜色
-const DEBUG_RIVER_START_END_COLOR = Color.BLACK # 调试颜色
 const LAKE_SURFACE_COLOR = Color.BLUE # 湖泊表面颜色
 const LAKE_SHORE_COLOR = Color.SEA_GREEN # 湖岸颜色，深蓝色
 
@@ -30,18 +29,16 @@ const LAKE_SHORE_COLOR = Color.SEA_GREEN # 湖岸颜色，深蓝色
 const TERRAIN_TYPE_EMPTY = 0
 const TERRAIN_TYPE_LAND = 1
 const TERRAIN_TYPE_RIVER = 2
-const TERRAIN_TYPE_DEBUG_RIVER_START_END = 3 # 调试地形类型
-const TERRAIN_TYPE_LAKE_SURFACE = 4 # 湖泊表面
-const TERRAIN_TYPE_LAKE_SHORE = 5 # 湖岸
+const TERRAIN_TYPE_LAKE_SURFACE = 3 # 湖泊表面
+const TERRAIN_TYPE_LAKE_SHORE = 4 # 湖岸
 
 # 地形类型到瓦片ID的映射
 const TERRAIN_TO_TILE_ID = {
 	TERRAIN_TYPE_EMPTY: -1,  # 不放置瓦片
 	TERRAIN_TYPE_LAND: 0,
 	TERRAIN_TYPE_RIVER: 1,
-	TERRAIN_TYPE_DEBUG_RIVER_START_END: 2,
-	TERRAIN_TYPE_LAKE_SURFACE: 3,
-	TERRAIN_TYPE_LAKE_SHORE: 4
+	TERRAIN_TYPE_LAKE_SURFACE: 2,
+	TERRAIN_TYPE_LAKE_SHORE: 3
 }
 # 新增河流生成参数
 const RIVER_DENSITY_PARAM = 1 # 对应 C++ settings->river_scale, 0.0 表示无河流. 值越小河越多但可能越细, 值越大河越少但可能越宽.
@@ -183,10 +180,9 @@ func create_terrain_tileset() -> TileSet:
 	var terrain_colors = [
 		TERRAIN_COLOR,          # TERRAIN_TYPE_LAND = 0
 		RIVER_COLOR,            # TERRAIN_TYPE_RIVER = 1
-		DEBUG_RIVER_START_END_COLOR,  # TERRAIN_TYPE_DEBUG_RIVER_START_END = 2
-		LAKE_SURFACE_COLOR,     # TERRAIN_TYPE_LAKE_SURFACE = 3
-		LAKE_SHORE_COLOR,       # TERRAIN_TYPE_LAKE_SHORE = 4
-		PLAYER_COLOR            # 玩家标记 = 5
+		LAKE_SURFACE_COLOR,     # TERRAIN_TYPE_LAKE_SURFACE = 2
+		LAKE_SHORE_COLOR,       # TERRAIN_TYPE_LAKE_SHORE = 3
+		PLAYER_COLOR            # 玩家标记 = 4
 	]
 	
 	# 创建一个包含所有颜色的纹理图集，每个瓦片TILE_SIZE像素
@@ -351,7 +347,7 @@ func _place_rivers_for_chunk(p_chunk_coord: Vector2i):
 	# Helper to check for river in world coordinates
 	var is_world_coord_river = func(world_coord: Vector2i):
 		var terrain_type = terrain_data.get(world_coord, TERRAIN_TYPE_EMPTY)
-		return terrain_type == TERRAIN_TYPE_RIVER or terrain_type == TERRAIN_TYPE_DEBUG_RIVER_START_END # MODIFIED
+		return terrain_type == TERRAIN_TYPE_RIVER
 
 	var starts_from_north_added = 0
 	# North neighbor
@@ -478,15 +474,9 @@ func _place_rivers_for_chunk(p_chunk_coord: Vector2i):
 			if not river_ends_local.is_empty():
 				var end_pos = river_ends_local.pop_front() # Erase begin
 				_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
-				# Mark start and end points for debugging AFTER drawing the river
-				terrain_data[_local_to_world(start_pos, p_chunk_coord)] = TERRAIN_TYPE_DEBUG_RIVER_START_END
-				terrain_data[_local_to_world(end_pos, p_chunk_coord)] = TERRAIN_TYPE_DEBUG_RIVER_START_END
 			elif not river_ends_copy.is_empty(): # C++ random_entry(river_end_copy)
 				var end_pos = _random_entry(river_ends_copy)
 				_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
-				# Mark start and end points for debugging AFTER drawing the river
-				terrain_data[_local_to_world(start_pos, p_chunk_coord)] = TERRAIN_TYPE_DEBUG_RIVER_START_END
-				terrain_data[_local_to_world(end_pos, p_chunk_coord)] = TERRAIN_TYPE_DEBUG_RIVER_START_END
 	elif river_ends_local.size() > river_starts_local.size() and not river_starts_local.is_empty():
 		var river_starts_copy = river_starts_local.duplicate()
 		while not river_ends_local.is_empty():
@@ -494,15 +484,9 @@ func _place_rivers_for_chunk(p_chunk_coord: Vector2i):
 			if not river_starts_local.is_empty():
 				var start_pos = river_starts_local.pop_front() # Erase begin
 				_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
-				# Mark start and end points for debugging AFTER drawing the river
-				terrain_data[_local_to_world(start_pos, p_chunk_coord)] = TERRAIN_TYPE_DEBUG_RIVER_START_END
-				terrain_data[_local_to_world(end_pos, p_chunk_coord)] = TERRAIN_TYPE_DEBUG_RIVER_START_END
 			elif not river_starts_copy.is_empty():
 				var start_pos = _random_entry(river_starts_copy)
 				_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
-				# Mark start and end points for debugging AFTER drawing the river
-				terrain_data[_local_to_world(start_pos, p_chunk_coord)] = TERRAIN_TYPE_DEBUG_RIVER_START_END
-				terrain_data[_local_to_world(end_pos, p_chunk_coord)] = TERRAIN_TYPE_DEBUG_RIVER_START_END
 	elif not river_ends_local.is_empty(): # Sizes are equal or start was empty and end was not (covered by first if)
 		if river_starts_local.size() != river_ends_local.size(): # Should be equal or handled above, C++ had a fallback
 			# This case in C++ adds a random start point if sizes don't match but both are non-empty.
@@ -518,9 +502,6 @@ func _place_rivers_for_chunk(p_chunk_coord: Vector2i):
 			var start_pos = river_starts_local[i]
 			var end_pos = river_ends_local[i]
 			_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
-			# Mark start and end points for debugging AFTER drawing the river
-			terrain_data[_local_to_world(start_pos, p_chunk_coord)] = TERRAIN_TYPE_DEBUG_RIVER_START_END
-			terrain_data[_local_to_world(end_pos, p_chunk_coord)] = TERRAIN_TYPE_DEBUG_RIVER_START_END
 
 
 func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_local: Vector2i):
@@ -692,7 +673,7 @@ func _place_lakes_for_chunk(chunk_coord: Vector2i):
 					var p = Vector2i(world_start_x + x, world_start_y + y)
 					var terrain_type = terrain_data.get(p, TERRAIN_TYPE_EMPTY)
 					# C++: if( ter( p )->is_river() ) { lake_set.emplace( p.xy() ); }
-					if terrain_type == TERRAIN_TYPE_RIVER or terrain_type == TERRAIN_TYPE_DEBUG_RIVER_START_END:
+					if terrain_type == TERRAIN_TYPE_RIVER:
 						lake_set[p] = true
 			
 			# C++: 处理湖泊点，区分表面和岸边
@@ -771,7 +752,7 @@ func _connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord
 	var lake_has_river = false
 	for lake_point in lake_points:
 		var terrain_type = terrain_data.get(lake_point, TERRAIN_TYPE_EMPTY)
-		if terrain_type == TERRAIN_TYPE_RIVER or terrain_type == TERRAIN_TYPE_DEBUG_RIVER_START_END:
+		if terrain_type == TERRAIN_TYPE_RIVER:
 			lake_has_river = true
 			break
 	
@@ -797,7 +778,7 @@ func _connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord
 					var terrain_type = terrain_data.get(p, TERRAIN_TYPE_EMPTY)
 					
 					# C++: if( !ter( p )->is_river() ) { continue; }
-					if terrain_type != TERRAIN_TYPE_RIVER and terrain_type != TERRAIN_TYPE_DEBUG_RIVER_START_END:
+					if terrain_type != TERRAIN_TYPE_RIVER:
 						continue
 					
 					# C++: const int distance = square_dist( lake_connection_point, p.xy() );
