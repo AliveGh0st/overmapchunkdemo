@@ -19,7 +19,6 @@ var tile_set_resource: TileSet
 
 # 颜色设置（CDDA终端风格颜色方案）
 const TERRAIN_COLOR = Color.YELLOW_GREEN # 田野颜色，黄色（CDDA经典田野色）
-const EMPTY_COLOR = Color.BLACK
 const PLAYER_COLOR = Color.RED # 保持红色玩家标记
 const RIVER_COLOR = Color.BLUE # 河流颜色，亮蓝色（CDDA水域色）
 const LAKE_SURFACE_COLOR = Color.BLUE # 湖泊表面颜色，纯蓝色（深水区）
@@ -383,16 +382,16 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	# 在基础地形生成后，尝试生成河流
 	# 注意：河流生成时会检查湖泊噪声，避免在将来会成为湖泊的位置生成河流
 	if RIVER_DENSITY_PARAM > 0.0:
-		_place_rivers_for_chunk(chunk_coord)
+		place_rivers(chunk_coord)
 	
 	# 在河流生成后，尝试生成湖泊
 	# 湖泊会覆盖河流，但河流生成时已经避开了湖泊区域，减少冲突
-	_place_lakes_for_chunk(chunk_coord)
+	place_lakes(chunk_coord)
 	
 	# 最后生成森林（在湖泊之后，确保森林能看到最终的地形状态）
-	_place_forests_for_chunk(chunk_coord)
+	place_forests(chunk_coord)
 
-func _place_rivers_for_chunk(p_chunk_coord: Vector2i):
+func place_rivers(p_chunk_coord: Vector2i):
 	# GDScript translation of C++ place_rivers function
 	# OMAPX and OMAPY are CHUNK_SIZE in this context
 	# 河流生成时会检查湖泊噪声，避免在湖泊位置生成河流，符合C++原版逻辑
@@ -681,7 +680,7 @@ func _random_entry_removed(arr: Array):
 
 # === 湖泊生成系统 - 完全匹配C++ place_lakes 函数 ===
 
-func _place_lakes_for_chunk(chunk_coord: Vector2i):
+func place_lakes(chunk_coord: Vector2i):
 	"""为指定区块生成湖泊，完全匹配C++的place_lakes函数逻辑"""
 	# 计算区块在世界坐标中的起始位置
 	var world_start_x = chunk_coord.x * CHUNK_SIZE
@@ -849,6 +848,7 @@ func _connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord
 		# C++: if( closest_distance > 0 ) { place_river( closest_point, lake_connection_point ); }
 		if closest_distance > 0:
 			_place_river_between_points(closest_point, lake_connection_point)
+			# _draw_single_river_path(chunk_coord, lake_connection_point, closest_point)
 	
 	# C++: Get the north and south most points in our lake.
 	# auto north_south_most = std::minmax_element( lake_points.begin(), lake_points.end(), ... );
@@ -1198,7 +1198,7 @@ func forest_noise_at(world_pos: Vector2i) -> float:
 	
 	# C++: return std::max( 0.0f, r - d * 0.5f );
 	return max(0.0, r - d * 0.5)
-func _place_forests_for_chunk(chunk_coord: Vector2i):
+func place_forests(chunk_coord: Vector2i):
 	"""完全匹配C++的overmap::place_forests()函数逻辑"""
 	# 计算区块在世界坐标中的起始位置
 	var world_start_x = chunk_coord.x * CHUNK_SIZE

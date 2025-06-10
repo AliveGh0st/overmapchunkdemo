@@ -36,12 +36,7 @@ func _ready():
 	if sprite:
 		# 隐藏玩家精灵，因为玩家的视觉表示由OvermapRenderer处理
 		sprite.visible = false
-		# 可选：如果需要调试，可以创建一个小的透明标记
-		# var texture = ImageTexture.new()
-		# var image = Image.create(TILE_SIZE, TILE_SIZE, false, Image.FORMAT_RGBA8)
-		# image.fill(Color(1, 1, 1, 0.1))  # 几乎透明的白色
-		# texture.set_image(image)
-		# sprite.texture = texture
+		pass # 替换为 pass 以避免空的 if 块
 
 func _physics_process(_delta):
 	# 获取输入向量

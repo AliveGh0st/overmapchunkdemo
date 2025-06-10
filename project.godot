@@ -20,11 +20,6 @@ config/icon="res://icon.svg"
 file_logging/enable_file_logging=true
 gdscript/warnings/empty_file=0
 
-[display]
-
-window/size/viewport_width=1600
-window/size/viewport_height=800
-
 [editor]
 
 script/search_in_file_extensions=PackedStringArray("gd", "cs")

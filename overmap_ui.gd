@@ -14,9 +14,9 @@ func _ready():
 		overmap_manager = get_node("../../OvermapRenderer")
 	
 	if not overmap_manager:
-		pass  # 静默处理，不输出警告
+		pass 
 	else:
-		pass  # 静默处理，不输出成功信息
+		pass 
 
 func _process(_delta):
 	if overmap_manager and debug_label and overmap_manager.has_method("get_simple_info"):
