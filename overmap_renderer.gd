@@ -17,13 +17,15 @@ const CHUNK_SIZE = 180  # 区块大小
 var tile_map_layer: TileMapLayer
 var tile_set_resource: TileSet
 
-# 颜色设置（保留用于创建瓦片）
-const TERRAIN_COLOR = Color.GREEN
+# 颜色设置（CDDA终端风格颜色方案）
+const TERRAIN_COLOR = Color.YELLOW_GREEN # 田野颜色，黄色（CDDA经典田野色）
 const EMPTY_COLOR = Color.BLACK
-const PLAYER_COLOR = Color.RED
-const RIVER_COLOR = Color.BLUE # 河流颜色
-const LAKE_SURFACE_COLOR = Color.BLUE # 湖泊表面颜色
-const LAKE_SHORE_COLOR = Color.SEA_GREEN # 湖岸颜色，深蓝色
+const PLAYER_COLOR = Color.RED # 保持红色玩家标记
+const RIVER_COLOR = Color.BLUE # 河流颜色，亮蓝色（CDDA水域色）
+const LAKE_SURFACE_COLOR = Color.BLUE # 湖泊表面颜色，纯蓝色（深水区）
+const LAKE_SHORE_COLOR = Color.DARK_GRAY # 湖岸颜色，青色（CDDA浅水色）
+const FOREST_COLOR = Color.DARK_GREEN# 森林颜色，亮绿色（CDDA森林色）
+const FOREST_THICK_COLOR = Color.DARK_GREEN# 密林颜色，深绿色（CDDA密林色）
 
 # 地形类型和对应的瓦片ID
 const TERRAIN_TYPE_EMPTY = 0
@@ -31,6 +33,8 @@ const TERRAIN_TYPE_LAND = 1
 const TERRAIN_TYPE_RIVER = 2
 const TERRAIN_TYPE_LAKE_SURFACE = 3 # 湖泊表面
 const TERRAIN_TYPE_LAKE_SHORE = 4 # 湖岸
+const TERRAIN_TYPE_FOREST = 5 # 森林
+const TERRAIN_TYPE_FOREST_THICK = 6 # 密林
 
 # 地形类型到瓦片ID的映射
 const TERRAIN_TO_TILE_ID = {
@@ -38,7 +42,9 @@ const TERRAIN_TO_TILE_ID = {
 	TERRAIN_TYPE_LAND: 0,
 	TERRAIN_TYPE_RIVER: 1,
 	TERRAIN_TYPE_LAKE_SURFACE: 2,
-	TERRAIN_TYPE_LAKE_SHORE: 3
+	TERRAIN_TYPE_LAKE_SHORE: 3,
+	TERRAIN_TYPE_FOREST: 4,
+	TERRAIN_TYPE_FOREST_THICK: 5
 }
 # 新增河流生成参数
 const RIVER_DENSITY_PARAM = 1 # 对应 C++ settings->river_scale, 0.0 表示无河流. 值越小河越多但可能越细, 值越大河越少但可能越宽.
@@ -77,6 +83,30 @@ var rendered_area: Rect2i = Rect2i()  # 当前已渲染的区域
 # 湖泊噪声生成器
 var lake_noise: FastNoiseLite
 
+# 森林生成参数（完全匹配C++逻辑）
+const FOREST_NOISE_THRESHOLD_FOREST = 0.25 # 森林生成阈值
+const FOREST_NOISE_THRESHOLD_FOREST_THICK = 0.3 # 密林生成阈值
+const FOREST_SIZE_ADJUST = 0.0 # 森林大小调整值，对应C++的forest_size_adjust
+
+# 森林噪声参数 - 第一层（森林基础分布）
+const FOREST_NOISE_1_OCTAVES = 4
+const FOREST_NOISE_1_PERSISTENCE = 0.5
+const FOREST_NOISE_1_SCALE = 0.03
+const FOREST_NOISE_1_POWER = 2.0
+
+# 森林噪声参数 - 第二层（密度减少效果）
+const FOREST_NOISE_2_OCTAVES = 6
+const FOREST_NOISE_2_PERSISTENCE = 0.5
+const FOREST_NOISE_2_SCALE = 0.07
+const FOREST_NOISE_2_POWER = 3.0
+
+# 森林噪声生成器
+var forest_noise_1: FastNoiseLite # 第一层噪声 - 森林基础分布
+var forest_noise_2: FastNoiseLite # 第二层噪声 - 森林密度减少效果
+
+# 全局种子系统（确保所有噪声生成器使用相同种子）
+var world_seed: int = 0
+
 # 防止无限循环的变量
 var chunk_creation_cooldown: float = 0.0
 var COOLDOWN_TIME: float = 0.1  # 0.1秒冷却时间，更快响应玩家移动
@@ -105,9 +135,15 @@ func _on_viewport_size_changed():
 
 func _ready():
 	add_to_group("overmap_manager")
+	
+	# 初始化全局种子
+	world_seed = randi()
+	print("World seed: ", world_seed)
+	
 	update_viewport_size()  # 计算视野大小
 	setup_tilemap()
 	setup_lake_noise()
+	setup_forest_noise()
 	
 	# 监听窗口大小变化
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
@@ -182,7 +218,9 @@ func create_terrain_tileset() -> TileSet:
 		RIVER_COLOR,            # TERRAIN_TYPE_RIVER = 1
 		LAKE_SURFACE_COLOR,     # TERRAIN_TYPE_LAKE_SURFACE = 2
 		LAKE_SHORE_COLOR,       # TERRAIN_TYPE_LAKE_SHORE = 3
-		PLAYER_COLOR            # 玩家标记 = 4
+		FOREST_COLOR,           # TERRAIN_TYPE_FOREST = 4
+		FOREST_THICK_COLOR,     # TERRAIN_TYPE_FOREST_THICK = 5
+		PLAYER_COLOR            # 玩家标记 = 6 (更新索引)
 	]
 	
 	# 创建一个包含所有颜色的纹理图集，每个瓦片TILE_SIZE像素
@@ -231,11 +269,29 @@ func create_terrain_tileset() -> TileSet:
 func setup_lake_noise():
 	"""初始化湖泊噪声生成器"""
 	lake_noise = FastNoiseLite.new()
-	lake_noise.seed = randi()  # 使用随机种子
+	lake_noise.seed = world_seed  # 使用全局种子
 	lake_noise.frequency = LAKE_NOISE_SCALE
 	lake_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
 	lake_noise.fractal_octaves = LAKE_NOISE_OCTAVES
 	lake_noise.fractal_gain = LAKE_NOISE_PERSISTENCE
+
+func setup_forest_noise():
+	"""初始化森林噪声生成器 - 完全匹配C++的双层噪声逻辑"""
+	# 第一层噪声 - 森林基础分布
+	forest_noise_1 = FastNoiseLite.new()
+	forest_noise_1.seed = world_seed  # 使用全局种子
+	forest_noise_1.frequency = FOREST_NOISE_1_SCALE
+	forest_noise_1.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	forest_noise_1.fractal_octaves = FOREST_NOISE_1_OCTAVES
+	forest_noise_1.fractal_gain = FOREST_NOISE_1_PERSISTENCE
+	
+	# 第二层噪声 - 森林密度减少效果
+	forest_noise_2 = FastNoiseLite.new()
+	forest_noise_2.seed = world_seed + 1  # 使用稍微不同的种子避免完全相同的噪声
+	forest_noise_2.frequency = FOREST_NOISE_2_SCALE
+	forest_noise_2.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	forest_noise_2.fractal_octaves = FOREST_NOISE_2_OCTAVES
+	forest_noise_2.fractal_gain = FOREST_NOISE_2_PERSISTENCE
 
 func check_and_generate_chunks():
 	"""检查玩家位置并在需要时生成新区块"""
@@ -332,6 +388,9 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	# 在河流生成后，尝试生成湖泊
 	# 湖泊会覆盖河流，但河流生成时已经避开了湖泊区域，减少冲突
 	_place_lakes_for_chunk(chunk_coord)
+	
+	# 最后生成森林（在湖泊之后，确保森林能看到最终的地形状态）
+	_place_forests_for_chunk(chunk_coord)
 
 func _place_rivers_for_chunk(p_chunk_coord: Vector2i):
 	# GDScript translation of C++ place_rivers function
@@ -613,7 +672,7 @@ func _random_entry(arr: Array):
 func _random_entry_removed(arr: Array):
 	if arr.is_empty():
 		push_warning("Attempted to remove random entry from empty array.")
-		return Vector2i.ZERO 
+		return Vector2.ZERO 
 	var idx = randi() % arr.size()
 	var entry = arr[idx]
 	arr.remove_at(idx)
@@ -826,7 +885,7 @@ func _is_lake_noise_at(world_pos: Vector2i) -> bool:
 	"""检查指定世界坐标是否应该生成湖泊"""
 	# 获取噪声值
 	var noise_value = lake_noise.get_noise_2d(world_pos.x, world_pos.y)
-	# 规范化到0-1范围
+	# 规范化到0-1 范围
 	noise_value = (noise_value + 1.0) * 0.5
 	# 应用幂运算使分布更稀疏
 	noise_value = pow(noise_value, LAKE_NOISE_POWER)
@@ -1040,7 +1099,7 @@ func update_player_marker(world_x: int, world_y: int):
 	# 如果位置没有变化，只需要处理闪烁
 	if new_player_pos == player_marker_tile_pos:
 		if player_visible:
-			tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 5))  # 玩家用红色瓦片（索引5）
+			tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 6))  # 玩家用红色瓦片（索引6）
 			print("Set player tile visible at: ", player_marker_tile_pos)
 		else:
 			# 显示原始地形
@@ -1058,7 +1117,7 @@ func update_player_marker(world_x: int, world_y: int):
 	# 设置新位置
 	player_marker_tile_pos = new_player_pos
 	if player_visible:
-		tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 5))  # 玩家标记
+		tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 6))  # 玩家标记
 		print("Set new player position: ", player_marker_tile_pos)
 
 # TileMapLayer渲染不需要自定义_draw方法
@@ -1118,3 +1177,58 @@ func get_debug_info() -> String:
 		edge_info, chunk_creation_cooldown, map_size_x, map_size_y, canvas_size_x, canvas_size_y,
 		", ".join(surrounding_chunks)
 	]
+
+func forest_noise_at(world_pos: Vector2i) -> float:
+	"""完全匹配C++的om_noise_layer_forest::noise_at函数"""
+	# 第一层噪声 - 森林基础分布
+	# C++: float r = scaled_octave_noise_3d( 4, 0.5, 0.03, 0, 1, p.x(), p.y(), get_seed() );
+	var r = forest_noise_1.get_noise_2d(world_pos.x, world_pos.y)
+	# 将噪声值从[-1,1]范围映射到[0,1]范围
+	r = (r + 1.0) * 0.5
+	# C++: r = std::pow( r, 2.0f );
+	r = pow(r, FOREST_NOISE_1_POWER)
+	
+	# 第二层噪声 - 森林密度减少效果
+	# C++: float d = scaled_octave_noise_3d( 6, 0.5, 0.07, 0, 1, p.x(), p.y(), get_seed() );
+	var d = forest_noise_2.get_noise_2d(world_pos.x, world_pos.y)
+	# 将噪声值从[-1,1]范围映射到[0,1]范围
+	d = (d + 1.0) * 0.5
+	# C++: d = std::pow( d, 3.0f );
+	d = pow(d, FOREST_NOISE_2_POWER)
+	
+	# C++: return std::max( 0.0f, r - d * 0.5f );
+	return max(0.0, r - d * 0.5)
+func _place_forests_for_chunk(chunk_coord: Vector2i):
+	"""完全匹配C++的overmap::place_forests()函数逻辑"""
+	# 计算区块在世界坐标中的起始位置
+	var world_start_x = chunk_coord.x * CHUNK_SIZE
+	var world_start_y = chunk_coord.y * CHUNK_SIZE
+	
+	# C++: const oter_id default_oter_id( settings->default_oter[OVERMAP_DEPTH] );
+	# 在我们的实现中，默认地形类型是TERRAIN_TYPE_LAND
+	var default_terrain_type = TERRAIN_TYPE_LAND
+	
+	# C++: for( int x = 0; x < OMAPX; x++ ) { for( int y = 0; y < OMAPY; y++ ) { ... } }
+	for x in range(CHUNK_SIZE):
+		for y in range(CHUNK_SIZE):
+			var world_pos = Vector2i(world_start_x + x, world_start_y + y)
+			var current_terrain = terrain_data.get(world_pos, TERRAIN_TYPE_EMPTY)
+			
+			# C++: At this point in the process, we only want to consider converting the terrain into
+			# a forest if it's currently the default terrain type (e.g. a field).
+			# C++: if( oter != default_oter_id ) { continue; }
+			if current_terrain != default_terrain_type:
+				continue
+			
+			# C++: const float n = f.noise_at( p.xy() );
+			var n = forest_noise_at(world_pos)
+			
+			# C++: If the noise here meets our threshold, turn it into a forest.
+			# C++: if( n + forest_size_adjust > settings->overmap_forest.noise_threshold_forest_thick ) {
+			if n + FOREST_SIZE_ADJUST > FOREST_NOISE_THRESHOLD_FOREST_THICK:
+				# C++: ter_set( p, oter_forest_thick );
+				terrain_data[world_pos] = TERRAIN_TYPE_FOREST_THICK
+			# C++: } else if( n + forest_size_adjust > settings->overmap_forest.noise_threshold_forest ) {
+			elif n + FOREST_SIZE_ADJUST > FOREST_NOISE_THRESHOLD_FOREST:
+				# C++: ter_set( p, oter_forest );
+				terrain_data[world_pos] = TERRAIN_TYPE_FOREST
