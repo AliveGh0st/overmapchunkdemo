@@ -6,8 +6,8 @@ class_name OvermapRenderer
 # 地图设置
 var map_size_x: int  # 动态计算的渲染区域宽度（格子数）
 var map_size_y: int  # 动态计算的渲染区域高度（格子数）
-const CELL_SIZE = 8   # 每个格子的像素大小（用于视口计算）
-const TILE_SIZE = 8  # TileMap中每个瓦片的像素大小（游戏世界格子大小）
+const CELL_SIZE = 12   # 每个格子的像素大小（用于视口计算）
+const TILE_SIZE = 16  # TileMap中每个瓦片的像素大小（游戏世界格子大小）
 const BORDER_THRESHOLD = 11  # 距离边缘11格时创建新区块
 var canvas_size_x: int  # 动态计算的画布宽度（像素）
 var canvas_size_y: int  # 动态计算的画布高度（像素）
@@ -52,10 +52,10 @@ const RIVER_DENSITY_PARAM = 1 # 对应 C++ settings->river_scale, 0.0 表示无�
 # 湖泊生成参数
 const LAKE_NOISE_THRESHOLD = 0.25 # 噪声阈值，超过此值才会生成湖泊
 const LAKE_SIZE_MIN = 20 # 湖泊最小尺寸，小于此尺寸的湖泊会被过滤掉
-const LAKE_RIVER_CONNECTION_MIN_SIZE = 50 # 湖泊连接河流的最小尺寸阈值，小于此值的湖泊不会连接到河流
+const LAKE_RIVER_CONNECTION_MIN_SIZE = 65 # 湖泊连接河流的最小尺寸阈值，小于此值的湖泊不会连接到河流
 const LAKE_DEPTH = -5 # 湖泊深度（Z轴层级）
 
-# Simplex噪声参数
+# 湖泊噪声参数
 const LAKE_NOISE_OCTAVES = 8 # 倍频数
 const LAKE_NOISE_PERSISTENCE = 0.5 # 持续性
 const LAKE_NOISE_SCALE = 0.002 # 缩放比例
@@ -230,25 +230,77 @@ func create_terrain_tileset() -> TileSet:
 		var color = terrain_colors[i]
 		var start_y = i * tile_pixel_size
 		
-		# 绘制圆形而不是矩形
-		var center_x = tile_pixel_size / 2.0
-		var center_y = tile_pixel_size / 2.0
-		var radius = tile_pixel_size / 2.0 - 0.5  # 稍微小一点以避免边缘问题
-		
 		# 先填充透明背景
 		for x in range(tile_pixel_size):
 			for y in range(tile_pixel_size):
 				atlas_image.set_pixel(x, start_y + y, Color(0, 0, 0, 0))  # 透明背景
 		
-		# 绘制圆形
-		for x in range(tile_pixel_size):
-			for y in range(tile_pixel_size):
-				var dx = x - center_x
-				var dy = y - center_y
-				var distance = sqrt(dx * dx + dy * dy)
-				
-				if distance <= radius:
-					atlas_image.set_pixel(x, start_y + y, color)
+		if i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_LAND]: # 特殊处理田野
+			var grass_color = TERRAIN_COLOR
+			var mid_x = int(float(tile_pixel_size) / 2.0)
+			var bottom_y = tile_pixel_size - 1
+
+			# 中间竖线 (较长)
+			var top_y_middle = int(float(tile_pixel_size) / 4.0)
+			if mid_x >= 0 and mid_x < tile_pixel_size: # 确保 mid_x 在边界内
+				for y_grass in range(top_y_middle, bottom_y + 1):
+					if y_grass >=0 and y_grass < tile_pixel_size: # 确保 y_grass 在边界内
+						atlas_image.set_pixel(mid_x, start_y + y_grass, grass_color)
+
+			# 两侧竖线 (较短)
+			var top_y_sides = int(float(tile_pixel_size) * 2.0 / 4.0) # 使其比中间线短
+			var side_x_offset = int(float(tile_pixel_size) / 4.0)
+			
+			var left_x = mid_x - side_x_offset
+			var right_x = mid_x + side_x_offset
+
+			# 左侧竖线
+			if left_x >= 0 and left_x < tile_pixel_size: # 确保 left_x 在边界内
+				for y_grass in range(top_y_sides, bottom_y + 1):
+					if y_grass >=0 and y_grass < tile_pixel_size: # 确保 y_grass 在边界内
+						atlas_image.set_pixel(left_x, start_y + y_grass, grass_color)
+
+			# 右侧竖线
+			if right_x >= 0 and right_x < tile_pixel_size: # 确保 right_x 在边界内
+				for y_grass in range(top_y_sides, bottom_y + 1):
+					if y_grass >=0 and y_grass < tile_pixel_size: # 确保 y_grass 在边界内
+						atlas_image.set_pixel(right_x, start_y + y_grass, grass_color)
+		
+		# elif i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_RIVER]: # 特殊处理河流
+		# 	var river_color = RIVER_COLOR
+		# 	var wave_height = int(float(tile_pixel_size) / 4.0)
+		# 	var wave_length = float(tile_pixel_size) / 2.0
+		# 	var num_waves = 2 # 绘制两层波浪
+
+		# 	for wave_idx in range(num_waves):
+		# 		var y_offset = wave_idx * (wave_height + 1) # 波浪之间的垂直偏移
+		# 		for x_pixel in range(tile_pixel_size):
+		# 			# 计算正弦波的y值
+		# 			var sin_val = sin( (float(x_pixel) / wave_length + float(wave_idx) * 0.5) * PI * 2.0)
+		# 			var y_wave = int( (sin_val * float(wave_height) / 2.0) + float(wave_height) / 2.0 + float(tile_pixel_size) / 4.0 + y_offset)
+					
+		# 			# 确保y_wave在瓦片边界内
+		# 			y_wave = clamp(y_wave, 0, tile_pixel_size - 1)
+					
+		# 			# 确保x_pixel在瓦片边界内 (虽然循环保证了这一点，但以防万一)
+		# 			var current_x = clamp(x_pixel, 0, tile_pixel_size -1)
+					
+		# 			atlas_image.set_pixel(current_x, start_y + y_wave, river_color)
+		else:
+			# 绘制圆形 (保持其他地形为圆形)
+			var center_x = float(tile_pixel_size) / 2.0
+			var center_y = float(tile_pixel_size) / 2.0
+			var radius = float(tile_pixel_size) / 2.0 - 0.5  # 稍微小一点以避免边缘问题
+			
+			# 绘制圆形
+			for x_circle in range(tile_pixel_size):
+				for y_circle in range(tile_pixel_size):
+					var dx = float(x_circle) - center_x
+					var dy = float(y_circle) - center_y
+					var distance = sqrt(dx * dx + dy * dy)
+					
+					if distance <= radius:
+						atlas_image.set_pixel(x_circle, start_y + y_circle, color)
 	
 	var atlas_texture = ImageTexture.new()
 	atlas_texture.set_image(atlas_image)
@@ -570,44 +622,44 @@ func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loc
 	var p2_local = pa_local # Current point, local to chunk
 	
 	while p2_local != pb_local:
-		# 第一个随机游走和笔刷应用块
-		p2_local.x += randi_range(-1, 1)
-		p2_local.y += randi_range(-1, 1)
-		if p2_local.x < 0:
-			p2_local.x = 0
-		if p2_local.x > CHUNK_SIZE - 1:
-			p2_local.x = CHUNK_SIZE - 1
-		if p2_local.y < 0:
-			p2_local.y = 0
-		if p2_local.y > CHUNK_SIZE - 1:
-			p2_local.y = CHUNK_SIZE - 1
-		
-		# 第一个笔刷应用
-		for i in range(-1 * river_scale, 1 * river_scale + 1):
-			for j in range(-1 * river_scale, 1 * river_scale + 1):
-				var brush_point_local = p2_local + Vector2i(j, i)
-				if brush_point_local.y >= 0 and brush_point_local.y < CHUNK_SIZE and brush_point_local.x >= 0 and brush_point_local.x < CHUNK_SIZE:
-					var world_coord = _local_to_world(brush_point_local, p_chunk_coord)
-					if not _is_lake_at(world_coord) and _one_in(river_chance):
-						terrain_data[world_coord] = TERRAIN_TYPE_RIVER
-		
-		# 朝向目标移动的逻辑 - 完全匹配C++
-		if pb_local.x > p2_local.x and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < pb_local.x - p2_local.x or \
-		   (randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > pb_local.x - p2_local.x and \
-			randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(pb_local.y - p2_local.y))):
-			p2_local.x += 1
-		if pb_local.x < p2_local.x and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < p2_local.x - pb_local.x or \
-		   (randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > p2_local.x - pb_local.x and \
-			randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(pb_local.y - p2_local.y))):
-			p2_local.x -= 1
-		if pb_local.y > p2_local.y and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < pb_local.y - p2_local.y or \
-		   (randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > pb_local.y - p2_local.y and \
-			randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
-			p2_local.y += 1
-		if pb_local.y < p2_local.y and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < p2_local.y - pb_local.y or \
-		   (randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > p2_local.y - pb_local.y and \
-			randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
-			p2_local.y -= 1
+			# 第一个随机游走和笔刷应用块
+			p2_local.x += randi_range(-1, 1)
+			p2_local.y += randi_range(-1, 1)
+			if p2_local.x < 0:
+				p2_local.x = 0
+			if p2_local.x > CHUNK_SIZE - 1:
+				p2_local.x = CHUNK_SIZE - 1
+			if p2_local.y < 0:
+				p2_local.y = 0
+			if p2_local.y > CHUNK_SIZE - 1:
+				p2_local.y = CHUNK_SIZE - 1
+			
+			# 第一个笔刷应用
+			for i in range(-1 * river_scale, 1 * river_scale + 1):
+				for j in range(-1 * river_scale, 1 * river_scale + 1):
+					var brush_point_local = p2_local + Vector2i(j, i)
+					if brush_point_local.y >= 0 and brush_point_local.y < CHUNK_SIZE and brush_point_local.x >= 0 and brush_point_local.x < CHUNK_SIZE:
+						var world_coord = _local_to_world(brush_point_local, p_chunk_coord)
+						if not _is_lake_at(world_coord) and _one_in(river_chance):
+							terrain_data[world_coord] = TERRAIN_TYPE_RIVER
+			
+			# 朝向目标移动的逻辑 - 完全匹配C++
+			if pb_local.x > p2_local.x and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < pb_local.x - p2_local.x or \
+			(randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > pb_local.x - p2_local.x and \
+				randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(pb_local.y - p2_local.y))):
+				p2_local.x += 1
+			if pb_local.x < p2_local.x and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < p2_local.x - pb_local.x or \
+			(randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > p2_local.x - pb_local.x and \
+				randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(pb_local.y - p2_local.y))):
+				p2_local.x -= 1
+			if pb_local.y > p2_local.y and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < pb_local.y - p2_local.y or \
+			(randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > pb_local.y - p2_local.y and \
+				randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
+				p2_local.y += 1
+			if pb_local.y < p2_local.y and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < p2_local.y - pb_local.y or \
+			(randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > p2_local.y - pb_local.y and \
+				randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
+				p2_local.y -= 1
 		
 		# # 第二个随机游走
 		# p2_local.x += randi_range(-1, 1)
