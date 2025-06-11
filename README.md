@@ -12,6 +12,20 @@
 - **地形连续性**: 使用全局噪声生成器确保相邻区块间地形完全连续
 - **Canvas渲染**: 每个格子4px，实时渲染
 - **颜色方案**: 绿色地形，深绿色背景，红色玩家指示器
+- **玩家闪烁**: 可配置的玩家标记闪烁效果，通过 `PLAYER_BLINK_ENABLED` 常量控制
+- **闪烁问题修复**: 内置了 Godot 4.x TileMapLayer 闪烁问题的完整解决方案
+
+## TileMap 闪烁问题解决方案
+
+本项目解决了 Godot 4.x 中的 TileMapLayer 闪烁问题：
+
+- ✅ **自动像素吸附配置** - 启用 "Snap 2D Transforms to Pixel" 项目设置
+- ✅ **禁用纹理填充** - 防止纹理渗透和视觉故障
+- ✅ **双图层架构** - 分离地形和玩家图层减少渲染冲突
+- ✅ **优化纹理图案** - 使用更稳定的十字形图案替代细线
+- ✅ **可控闪烁效果** - 通过常量控制玩家标记闪烁
+
+详细信息请参考：[TILEMAP_FLICKERING_FIX.md](TILEMAP_FLICKERING_FIX.md)
 
 ## 核心文件
 
@@ -32,6 +46,20 @@
 - **WASD** 或 **方向键** - 移动玩家
 - 玩家始终显示在画布中心，地图跟随玩家移动
 - 左下角显示实时调试信息（玩家世界坐标、当前区块、已生成区块数）
+
+## 配置选项
+
+### 玩家闪烁控制
+在 `overmap_renderer.gd` 文件中，你可以通过修改以下常量来控制玩家标记的闪烁效果：
+
+```gdscript
+const PLAYER_BLINK_ENABLED: bool = true  # 设为 false 可关闭玩家闪烁
+const PLAYER_BLINK_INTERVAL: float = 0.1  # 闪烁间隔（秒）
+```
+
+- 设置 `PLAYER_BLINK_ENABLED = false` 可以关闭玩家闪烁，让玩家标记始终显示
+- 设置 `PLAYER_BLINK_ENABLED = true` 启用闪烁效果，玩家标记会按设定间隔闪烁
+- `PLAYER_BLINK_INTERVAL` 控制闪烁的速度，数值越小闪烁越快
 
 ## 技术实现
 

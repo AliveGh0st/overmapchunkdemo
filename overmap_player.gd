@@ -3,9 +3,9 @@ extends CharacterBody2D
 # 改进的玩家控制器，专门为overmap系统设计
 
 # 格子大小（像素）- 应与OvermapRenderer.TILE_SIZE保持一致
-const TILE_SIZE: int = 4
+const TILE_SIZE: int = 16
 # 移动速度（像素/秒）
-@export var movement_speed: float = 300.0
+@export var movement_speed: float = 320.0
 # 是否启用格子对齐
 @export var grid_aligned: bool = true
 

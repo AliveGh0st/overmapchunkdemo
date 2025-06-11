@@ -22,8 +22,8 @@ gdscript/warnings/empty_file=0
 
 [display]
 
-window/size/viewport_width=1920
-window/size/viewport_height=1080
+window/size/viewport_width=1600
+window/size/viewport_height=800
 
 [editor]
 
@@ -92,4 +92,5 @@ language_server/remote_port=6005
 
 [rendering]
 
+2d/snap/snap_2d_vertices_to_pixel=true
 driver/driver_name="Forward+"

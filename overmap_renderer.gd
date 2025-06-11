@@ -6,25 +6,25 @@ class_name OvermapRenderer
 # 地图设置
 var map_size_x: int  # 动态计算的渲染区域宽度（格子数）
 var map_size_y: int  # 动态计算的渲染区域高度（格子数）
-const CELL_SIZE = 12   # 每个格子的像素大小（用于视口计算）
-const TILE_SIZE = 16  # TileMap中每个瓦片的像素大小（游戏世界格子大小）
+const TILE_SIZE = 32  # TileMap中每个瓦片的像素大小（游戏世界格子大小）
 const BORDER_THRESHOLD = 11  # 距离边缘11格时创建新区块
 var canvas_size_x: int  # 动态计算的画布宽度（像素）
 var canvas_size_y: int  # 动态计算的画布高度（像素）
 const CHUNK_SIZE = 180  # 区块大小
 
 # TileMapLayer相关
-var tile_map_layer: TileMapLayer
+var tile_map_layer: TileMapLayer  # 地形图层
+var player_tile_map_layer: TileMapLayer  # 玩家图层
 var tile_set_resource: TileSet
 
 # 颜色设置（CDDA终端风格颜色方案）
-const TERRAIN_COLOR = Color.YELLOW_GREEN # 田野颜色，黄色（CDDA经典田野色）
+const TERRAIN_COLOR = Color.GREEN # 田野颜色，黄色（CDDA经典田野色）
 const PLAYER_COLOR = Color.RED # 保持红色玩家标记
 const RIVER_COLOR = Color.BLUE # 河流颜色，亮蓝色（CDDA水域色）
 const LAKE_SURFACE_COLOR = Color.BLUE # 湖泊表面颜色，纯蓝色（深水区）
 const LAKE_SHORE_COLOR = Color.DARK_GRAY # 湖岸颜色，青色（CDDA浅水色）
 const FOREST_COLOR = Color.DARK_GREEN# 森林颜色，亮绿色（CDDA森林色）
-const FOREST_THICK_COLOR = Color.DARK_GREEN# 密林颜色，深绿色（CDDA密林色）
+const FOREST_THICK_COLOR = Color.FOREST_GREEN# 密林颜色，深绿色（CDDA密林色）
 
 # 地形类型和对应的瓦片ID
 const TERRAIN_TYPE_EMPTY = 0
@@ -45,6 +45,10 @@ const TERRAIN_TO_TILE_ID = {
 	TERRAIN_TYPE_FOREST: 4,
 	TERRAIN_TYPE_FOREST_THICK: 5
 }
+
+# 玩家标记闪烁控制
+const PLAYER_BLINK_ENABLED: bool = true  # 设置为false可禁用玩家标记闪烁
+
 # 新增河流生成参数
 const RIVER_DENSITY_PARAM = 1 # 对应 C++ settings->river_scale, 0.0 表示无河流. 值越小河越多但可能越细, 值越大河越少但可能越宽.
 								# 例如 0.5 -> chance_divider=2, brush_size=1. 2.0 -> chance_divider=1, brush_size=2.
@@ -113,10 +117,10 @@ var COOLDOWN_TIME: float = 0.1  # 0.1秒冷却时间，更快响应玩家移动
 func update_viewport_size():
 	"""根据当前视口大小更新地图渲染尺寸"""
 	var viewport_size = get_viewport().get_visible_rect().size
-	map_size_x = int(viewport_size.x / CELL_SIZE)
-	map_size_y = int(viewport_size.y / CELL_SIZE)
-	canvas_size_x = map_size_x * CELL_SIZE
-	canvas_size_y = map_size_y * CELL_SIZE
+	map_size_x = int(viewport_size.x / TILE_SIZE)
+	map_size_y = int(viewport_size.y / TILE_SIZE)
+	canvas_size_x = map_size_x * TILE_SIZE
+	canvas_size_y = map_size_y * TILE_SIZE
 	
 	# 静默更新视口大小，移除控制台输出
 
@@ -140,6 +144,7 @@ func _ready():
 	print("World seed: ", world_seed)
 	
 	update_viewport_size()  # 计算视野大小
+	
 	setup_tilemap()
 	setup_lake_noise()
 	setup_forest_noise()
@@ -161,12 +166,16 @@ func _process(delta):
 	if chunk_creation_cooldown > 0:
 		chunk_creation_cooldown -= delta
 	
-	# 更新玩家闪烁计时器
-	player_blink_timer += delta
-	if player_blink_timer >= PLAYER_BLINK_INTERVAL:
-		player_blink_timer = 0.0
-		player_visible = !player_visible
-		render_dirty = true  # 强制重新渲染以显示闪烁效果
+	# 更新玩家闪烁计时器（只有当闪烁开关启用时）
+	if PLAYER_BLINK_ENABLED:
+		player_blink_timer += delta
+		if player_blink_timer >= PLAYER_BLINK_INTERVAL:
+			player_blink_timer = 0.0
+			player_visible = !player_visible
+			render_dirty = true  # 强制重新渲染以显示闪烁效果
+	else:
+		# 如果闪烁被禁用，确保玩家始终可见
+		player_visible = true
 	
 	if not player_ref:
 		return
@@ -189,16 +198,27 @@ func _process(delta):
 
 func setup_tilemap():
 	"""初始化TileMapLayer"""
-	# 创建TileMapLayer节点
+	# 创建地形图层
 	tile_map_layer = TileMapLayer.new()
+	tile_map_layer.name = "TerrainLayer"
 	add_child(tile_map_layer)
+	
+	# 创建玩家图层（在地形图层之上）
+	player_tile_map_layer = TileMapLayer.new()
+	player_tile_map_layer.name = "PlayerLayer"
+	add_child(player_tile_map_layer)
 	
 	# 创建TileSet
 	tile_set_resource = create_terrain_tileset()
 	tile_map_layer.tile_set = tile_set_resource
 	
-	print("TileMapLayer created with tile_size: ", tile_set_resource.tile_size)
-	print("TileMapLayer position: ", tile_map_layer.position)
+	# 为玩家图层创建专用的TileSet（只包含玩家标记）
+	var player_tileset = create_player_tileset()
+	player_tile_map_layer.tile_set = player_tileset
+	
+	print("TileMapLayers created with tile_size: ", tile_set_resource.tile_size)
+	print("Terrain layer position: ", tile_map_layer.position)
+	print("Player layer position: ", player_tile_map_layer.position)
 	
 	render_dirty = true  # 标记需要重新渲染
 
@@ -211,15 +231,14 @@ func create_terrain_tileset() -> TileSet:
 	# 创建TileSetAtlasSource
 	var atlas_source = TileSetAtlasSource.new()
 	
-	# 为每种地形类型创建一个纹理
+	# 为每种地形类型创建一个纹理（移除玩家颜色，因为现在使用单独的图层）
 	var terrain_colors = [
 		TERRAIN_COLOR,          # TERRAIN_TYPE_LAND = 0
 		RIVER_COLOR,            # TERRAIN_TYPE_RIVER = 1
 		LAKE_SURFACE_COLOR,     # TERRAIN_TYPE_LAKE_SURFACE = 2
 		LAKE_SHORE_COLOR,       # TERRAIN_TYPE_LAKE_SHORE = 3
 		FOREST_COLOR,           # TERRAIN_TYPE_FOREST = 4
-		FOREST_THICK_COLOR,     # TERRAIN_TYPE_FOREST_THICK = 5
-		PLAYER_COLOR            # 玩家标记 = 6 (更新索引)
+		FOREST_THICK_COLOR      # TERRAIN_TYPE_FOREST_THICK = 5
 	]
 	
 	# 创建一个包含所有颜色的纹理图集，每个瓦片TILE_SIZE像素
@@ -248,7 +267,7 @@ func create_terrain_tileset() -> TileSet:
 						atlas_image.set_pixel(mid_x, start_y + y_grass, grass_color)
 
 			# 两侧竖线 (较短)
-			var top_y_sides = int(float(tile_pixel_size) * 2.0 / 4.0) # 使其比中间线短
+			var top_y_sides = int(float(tile_pixel_size) * 3.0 / 4.0) # 使其比中间线短
 			var side_x_offset = int(float(tile_pixel_size) / 4.0)
 			
 			var left_x = mid_x - side_x_offset
@@ -286,6 +305,9 @@ func create_terrain_tileset() -> TileSet:
 		# 			var current_x = clamp(x_pixel, 0, tile_pixel_size -1)
 					
 		# 			atlas_image.set_pixel(current_x, start_y + y_wave, river_color)
+		elif i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_FOREST] or i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_FOREST_THICK]:
+			# 绘制小树形状
+			_draw_tree_shape(atlas_image, start_y, tile_pixel_size, color, i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_FOREST_THICK])
 		else:
 			# 绘制圆形 (保持其他地形为圆形)
 			var center_x = float(tile_pixel_size) / 2.0
@@ -314,6 +336,52 @@ func create_terrain_tileset() -> TileSet:
 		var _tile_data = atlas_source.get_tile_data(atlas_coords, 0)
 		# 可以在这里设置瓦片的额外属性
 		
+	tileset.add_source(atlas_source, 0)
+	return tileset
+
+func create_player_tileset() -> TileSet:
+	"""创建专用的玩家TileSet资源"""
+	var tileset = TileSet.new()
+	tileset.tile_size = Vector2i(TILE_SIZE, TILE_SIZE)
+	
+	# 创建TileSetAtlasSource
+	var atlas_source = TileSetAtlasSource.new()
+	
+	# 只为玩家标记创建纹理
+	var tile_pixel_size = TILE_SIZE
+	var atlas_image = Image.create(tile_pixel_size, tile_pixel_size, false, Image.FORMAT_RGBA8)
+	
+	# 绘制玩家标记（红色圆形）
+	var player_color = PLAYER_COLOR
+	var center_x = float(tile_pixel_size) / 2.0
+	var center_y = float(tile_pixel_size) / 2.0
+	var radius = float(tile_pixel_size) / 2.0 - 0.5
+	
+	# 先填充透明背景
+	for x in range(tile_pixel_size):
+		for y in range(tile_pixel_size):
+			atlas_image.set_pixel(x, y, Color(0, 0, 0, 0))
+	
+	# 绘制红色圆形玩家标记
+	for x_circle in range(tile_pixel_size):
+		for y_circle in range(tile_pixel_size):
+			var dx = float(x_circle) - center_x
+			var dy = float(y_circle) - center_y
+			var distance = sqrt(dx * dx + dy * dy)
+			
+			if distance <= radius:
+				atlas_image.set_pixel(x_circle, y_circle, player_color)
+	
+	var atlas_texture = ImageTexture.new()
+	atlas_texture.set_image(atlas_image)
+	atlas_source.texture = atlas_texture
+	atlas_source.texture_region_size = Vector2i(tile_pixel_size, tile_pixel_size)
+	
+	# 添加玩家标记瓦片（只有一个瓦片，索引为0）
+	var atlas_coords = Vector2i(0, 0)
+	atlas_source.create_tile(atlas_coords)
+	var _tile_data = atlas_source.get_tile_data(atlas_coords, 0)
+	
 	tileset.add_source(atlas_source, 0)
 	return tileset
 
@@ -1151,25 +1219,23 @@ func update_player_marker(world_x: int, world_y: int):
 	# 如果位置没有变化，只需要处理闪烁
 	if new_player_pos == player_marker_tile_pos:
 		if player_visible:
-			tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 6))  # 玩家用红色瓦片（索引6）
+			player_tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 0))  # 玩家用红色瓦片（专用TileSet索引0）
 			print("Set player tile visible at: ", player_marker_tile_pos)
 		else:
-			# 显示原始地形
-			var terrain_type = terrain_data.get(player_marker_tile_pos, TERRAIN_TYPE_EMPTY)
-			set_tile_at_world_pos(player_marker_tile_pos, terrain_type)
-			print("Set terrain tile at player pos: ", player_marker_tile_pos, " type: ", terrain_type)
+			# 清除玩家标记瓦片
+			player_tile_map_layer.erase_cell(player_marker_tile_pos)
+			print("Cleared player tile at: ", player_marker_tile_pos)
 		return
 	
-	# 恢复旧位置的地形
+	# 清除旧位置的玩家标记
 	if player_marker_tile_pos != Vector2i(-999999, -999999):
-		var old_terrain_type = terrain_data.get(player_marker_tile_pos, TERRAIN_TYPE_EMPTY)
-		set_tile_at_world_pos(player_marker_tile_pos, old_terrain_type)
-		print("Restored old position: ", player_marker_tile_pos, " type: ", old_terrain_type)
+		player_tile_map_layer.erase_cell(player_marker_tile_pos)
+		print("Cleared old player position: ", player_marker_tile_pos)
 	
 	# 设置新位置
 	player_marker_tile_pos = new_player_pos
 	if player_visible:
-		tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 6))  # 玩家标记
+		player_tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 0))  # 玩家标记（专用TileSet索引0）
 		print("Set new player position: ", player_marker_tile_pos)
 
 # TileMapLayer渲染不需要自定义_draw方法
@@ -1250,6 +1316,7 @@ func forest_noise_at(world_pos: Vector2i) -> float:
 	
 	# C++: return std::max( 0.0f, r - d * 0.5f );
 	return max(0.0, r - d * 0.5)
+
 func place_forests(chunk_coord: Vector2i):
 	"""完全匹配C++的overmap::place_forests()函数逻辑"""
 	# 计算区块在世界坐标中的起始位置
@@ -1284,3 +1351,93 @@ func place_forests(chunk_coord: Vector2i):
 			elif n + FOREST_SIZE_ADJUST > FOREST_NOISE_THRESHOLD_FOREST:
 				# C++: ter_set( p, oter_forest );
 				terrain_data[world_pos] = TERRAIN_TYPE_FOREST
+
+func _draw_tree_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, color: Color, is_thick: bool):
+	"""绘制小树形状 - 多个圆形叠加"""
+	var center_x = int(float(tile_pixel_size) / 2.0)
+	var center_y = int(float(tile_pixel_size) / 2.0)
+	
+	# 树干参数
+	var trunk_width = 2.0  # 使用浮点数避免整数除法警告
+	var trunk_height = int(float(tile_pixel_size) * 0.5)  # 树干高度为瓦片的50%
+	var trunk_start_y = tile_pixel_size - trunk_height
+	
+	# 树冠参数 - 多个圆形叠加
+	var main_crown_radius = int(float(tile_pixel_size) * 0.3)  # 主树冠半径
+	var small_crown_radius = int(float(tile_pixel_size) * 0.2)  # 小树冠半径
+	
+	if is_thick:
+		main_crown_radius = int(float(tile_pixel_size) * 0.35)  # 密林的主树冠更大
+		small_crown_radius = int(float(tile_pixel_size) * 0.25)  # 密林的小树冠也更大
+	
+	# 绘制主树冠（中心圆形）
+	for x in range(tile_pixel_size):
+		for y in range(tile_pixel_size):
+			var dx = float(x) - float(center_x)
+			var dy = float(y) - float(center_y - 1)  # 主树冠稍微向上偏移
+			var distance = sqrt(dx * dx + dy * dy)
+			
+			if distance <= main_crown_radius:
+				atlas_image.set_pixel(x, start_y + y, color)
+	
+	# 绘制左上角小树冠
+	var left_crown_x = center_x - int(main_crown_radius * 0.6)
+	var left_crown_y = center_y - int(main_crown_radius * 0.4) - 1
+	for x in range(tile_pixel_size):
+		for y in range(tile_pixel_size):
+			var dx = float(x) - float(left_crown_x)
+			var dy = float(y) - float(left_crown_y)
+			var distance = sqrt(dx * dx + dy * dy)
+			
+			if distance <= small_crown_radius:
+				atlas_image.set_pixel(x, start_y + y, color)
+	
+	# 绘制右上角小树冠
+	var right_crown_x = center_x + int(main_crown_radius * 0.6)
+	var right_crown_y = center_y - int(main_crown_radius * 0.4) - 1
+	for x in range(tile_pixel_size):
+		for y in range(tile_pixel_size):
+			var dx = float(x) - float(right_crown_x)
+			var dy = float(y) - float(right_crown_y)
+			var distance = sqrt(dx * dx + dy * dy)
+			
+			if distance <= small_crown_radius:
+				atlas_image.set_pixel(x, start_y + y, color)
+	
+	# 如果是密林，添加更多小树冠
+	if is_thick:
+		# 左下角小树冠
+		var left_bottom_x = center_x - int(main_crown_radius * 0.4)
+		var left_bottom_y = center_y + int(main_crown_radius * 0.3)
+		for x in range(tile_pixel_size):
+			for y in range(tile_pixel_size):
+				var dx = float(x) - float(left_bottom_x)
+				var dy = float(y) - float(left_bottom_y)
+				var distance = sqrt(dx * dx + dy * dy)
+				
+				if distance <= small_crown_radius * 0.8:
+					atlas_image.set_pixel(x, start_y + y, color)
+		
+		# 右下角小树冠
+		var right_bottom_x = center_x + int(main_crown_radius * 0.4)
+		var right_bottom_y = center_y + int(main_crown_radius * 0.3)
+		for x in range(tile_pixel_size):
+			for y in range(tile_pixel_size):
+				var dx = float(x) - float(right_bottom_x)
+				var dy = float(y) - float(right_bottom_y)
+				var distance = sqrt(dx * dx + dy * dy)
+				
+				if distance <= small_crown_radius * 0.8:
+					atlas_image.set_pixel(x, start_y + y, color)
+	
+	# 绘制树干（矩形）- 棕黑色
+	var trunk_left = int(center_x - trunk_width / 2.0)
+	var trunk_right = int(center_x + trunk_width / 2.0)
+	# 棕黑色树干
+	var trunk_color = Color(0.4, 0.2, 0.1, 1.0)  # 棕黑色 RGB(102, 51, 25)
+	
+	for x in range(trunk_left, trunk_right + 1):
+		if x >= 0 and x < tile_pixel_size:
+			for y in range(trunk_start_y, tile_pixel_size):
+				if y >= 0 and y < tile_pixel_size:
+					atlas_image.set_pixel(x, start_y + y, trunk_color)
