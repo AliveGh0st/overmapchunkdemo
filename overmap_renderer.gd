@@ -6,7 +6,7 @@ class_name OvermapRenderer
 # 地图设置
 var map_size_x: int  # 动态计算的渲染区域宽度（格子数）
 var map_size_y: int  # 动态计算的渲染区域高度（格子数）
-const TILE_SIZE = 32  # TileMap中每个瓦片的像素大小（游戏世界格子大小）
+const TILE_SIZE = 16  # TileMap中每个瓦片的像素大小（游戏世界格子大小）
 const BORDER_THRESHOLD = 11  # 距离边缘11格时创建新区块
 var canvas_size_x: int  # 动态计算的画布宽度（像素）
 var canvas_size_y: int  # 动态计算的画布高度（像素）
@@ -260,7 +260,7 @@ func create_terrain_tileset() -> TileSet:
 			var bottom_y = tile_pixel_size - 1
 
 			# 中间竖线 (较长)
-			var top_y_middle = int(float(tile_pixel_size) / 4.0)
+			var top_y_middle = int(float(tile_pixel_size) * 2.0 / 4.0)
 			if mid_x >= 0 and mid_x < tile_pixel_size: # 确保 mid_x 在边界内
 				for y_grass in range(top_y_middle, bottom_y + 1):
 					if y_grass >=0 and y_grass < tile_pixel_size: # 确保 y_grass 在边界内
