@@ -13,7 +13,9 @@ config_version=5
 config/name="OvermapChunkDemo"
 run/main_scene="res://overmap_system.tscn"
 config/features=PackedStringArray("4.4", "Forward Plus")
-config/icon="res://icon.svg"
+boot_splash/bg_color=Color(0, 0, 0, 1)
+boot_splash/image="uid://qwlevjbu4p6"
+config/icon="uid://qwlevjbu4p6"
 
 [debug]
 
