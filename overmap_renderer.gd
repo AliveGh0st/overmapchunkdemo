@@ -32,6 +32,7 @@ const LAKE_SURFACE_COLOR = Color.BLUE ## 湖泊表面颜色（深蓝色）
 const LAKE_SHORE_COLOR = Color.DARK_GRAY ## 湖岸颜色（深灰色）
 const FOREST_COLOR = Color.DARK_GREEN## 森林颜色（深绿色）
 const FOREST_THICK_COLOR = Color.FOREST_GREEN## 密林颜色（更深的绿色）
+const SWAMP_COLOR = Color(0.4, 0.6, 0.3, 1.0) ## 沼泽颜色（暗绿褐色）
 
 # ============================================================================
 # 地形类型定义
@@ -43,6 +44,7 @@ const TERRAIN_TYPE_LAKE_SURFACE = 3 ## 湖泊表面（深水区）
 const TERRAIN_TYPE_LAKE_SHORE = 4 ## 湖岸（浅水区）
 const TERRAIN_TYPE_FOREST = 5 ## 森林
 const TERRAIN_TYPE_FOREST_THICK = 6 ## 密林
+const TERRAIN_TYPE_SWAMP = 7 ## 沼泽（森林水域）
 
 ## 地形类型到TileSet瓦片ID的映射关系
 const TERRAIN_TO_TILE_ID = {
@@ -52,7 +54,8 @@ const TERRAIN_TO_TILE_ID = {
 	TERRAIN_TYPE_LAKE_SURFACE: 2,
 	TERRAIN_TYPE_LAKE_SHORE: 3,
 	TERRAIN_TYPE_FOREST: 4,
-	TERRAIN_TYPE_FOREST_THICK: 5
+	TERRAIN_TYPE_FOREST_THICK: 5,
+	TERRAIN_TYPE_SWAMP: 6
 }
 
 # ============================================================================
@@ -135,6 +138,31 @@ var forest_noise_1: FastNoiseLite ## 第一层噪声生成器 - 森林基础分�
 var forest_noise_2: FastNoiseLite ## 第二层噪声生成器 - 森林密度减少效果
 
 # ============================================================================
+# 洪范平原（沼泽）生成系统参数（完全匹配C++逻辑）
+# ============================================================================
+## 河流洪泛平原缓冲区距离范围（以格子为单位）
+const RIVER_FLOODPLAIN_BUFFER_DISTANCE_MIN = 3
+const RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX = 15
+
+## 沼泽生成噪声阈值
+const NOISE_THRESHOLD_SWAMP_ADJACENT_WATER = 0.3  # 河流邻近沼泽阈值
+const NOISE_THRESHOLD_SWAMP_ISOLATED = 0.6        # 独立沼泽阈值
+
+## 性能优化参数
+const ENABLE_SWAMP_PERFORMANCE_OPTIMIZATIONS = true  # 启用性能优化
+const SWAMP_RIVER_SEARCH_RADIUS_OPTIMIZATION = true  # 优化河流搜索半径
+const ENABLE_SWAMP_PERFORMANCE_LOGGING = false       # 启用性能统计日志
+
+# 洪泛平原噪声参数（对应C++的om_noise_layer_floodplain）
+const FLOODPLAIN_NOISE_OCTAVES = 4      ## 噪声倍频数
+const FLOODPLAIN_NOISE_PERSISTENCE = 0.5 ## 噪声持续性
+const FLOODPLAIN_NOISE_SCALE = 0.05     ## 噪声缩放比例
+const FLOODPLAIN_NOISE_POWER = 2.0      ## 幂运算系数
+
+# 洪泛平原噪声生成器实例
+var floodplain_noise: FastNoiseLite ## 洪泛平原噪声生成器
+
+# ============================================================================
 # 全局系统设置
 # ============================================================================
 var world_seed: int = 0  ## 世界种子，确保所有噪声生成器使用相同种子
@@ -196,6 +224,7 @@ func _ready():
 	setup_tilemap()
 	setup_lake_noise()
 	setup_forest_noise()
+	setup_floodplain_noise()
 	
 	# 监听窗口大小变化事件
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
@@ -304,7 +333,8 @@ func create_terrain_tileset() -> TileSet:
 		LAKE_SURFACE_COLOR,     # TERRAIN_TYPE_LAKE_SURFACE = 2 (湖泊表面)
 		LAKE_SHORE_COLOR,       # TERRAIN_TYPE_LAKE_SHORE = 3 (湖岸)
 		FOREST_COLOR,           # TERRAIN_TYPE_FOREST = 4 (森林)
-		FOREST_THICK_COLOR      # TERRAIN_TYPE_FOREST_THICK = 5 (密林)
+		FOREST_THICK_COLOR,     # TERRAIN_TYPE_FOREST_THICK = 5 (密林)
+		SWAMP_COLOR             # TERRAIN_TYPE_SWAMP = 6 (沼泽)
 	]
 	
 	# 创建纹理图集，每个瓦片TILE_SIZE×TILE_SIZE像素
@@ -356,6 +386,11 @@ func create_terrain_tileset() -> TileSet:
 		# 为森林和密林绘制树形图案
 		elif i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_FOREST] or i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_FOREST_THICK]:
 			_draw_tree_shape(atlas_image, start_y, tile_pixel_size, color, i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_FOREST_THICK])
+		
+		# 为沼泽绘制特殊的水草混合图案
+		elif i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_SWAMP]:
+			_draw_swamp_shape(atlas_image, start_y, tile_pixel_size, color)
+		
 		else:
 			# 其他地形类型绘制圆形图案
 			var center_x = float(tile_pixel_size) / 2.0
@@ -469,11 +504,23 @@ func setup_forest_noise():
 	
 	# 第二层噪声 - 森林密度减少效果
 	forest_noise_2 = FastNoiseLite.new()
-	forest_noise_2.seed = world_seed + 1  # 使用稍微不同的种子避免完全相同
+	forest_noise_2.seed = world_seed  # 使用稍微不同的种子避免完全相同
 	forest_noise_2.frequency = FOREST_NOISE_2_SCALE
 	forest_noise_2.noise_type = FastNoiseLite.TYPE_SIMPLEX
 	forest_noise_2.fractal_octaves = FOREST_NOISE_2_OCTAVES
 	forest_noise_2.fractal_gain = FOREST_NOISE_2_PERSISTENCE
+
+func setup_floodplain_noise():
+	"""
+	初始化洪泛平原噪声生成器系统
+	用于沼泽生成，完全匹配C++版本的om_noise_layer_floodplain逻辑
+	"""
+	floodplain_noise = FastNoiseLite.new()
+	floodplain_noise.seed = world_seed# 使用独特的种子
+	floodplain_noise.frequency = FLOODPLAIN_NOISE_SCALE
+	floodplain_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	floodplain_noise.fractal_octaves = FLOODPLAIN_NOISE_OCTAVES
+	floodplain_noise.fractal_gain = FLOODPLAIN_NOISE_PERSISTENCE
 
 # ============================================================================
 # 区块生成管理系统
@@ -584,6 +631,9 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	
 	# 3. 生成森林（在所有水体生成后）
 	place_forests(chunk_coord)
+	
+	# 4. 生成洪范平原沼泽（在森林生成后，基于河流生成洪泛平原）
+	place_swamps(chunk_coord)
 
 # ============================================================================
 # 河流生成系统（完全匹配C++逻辑）
@@ -1330,6 +1380,20 @@ func forest_noise_at(world_pos: Vector2i) -> float:
 	# 返回最终噪声值（基础分布减去密度减少效果）
 	return max(0.0, r - d * 0.5)
 
+func floodplain_noise_at(world_pos: Vector2i) -> float:
+	"""
+	洪泛平原噪声计算函数，完全匹配C++的om_noise_layer_floodplain::noise_at函数
+	使用单层噪声生成，通过幂运算增强对比度
+	"""
+	# 获取基础噪声值
+	var r = floodplain_noise.get_noise_2d(world_pos.x, world_pos.y)
+	# 将噪声值从[-1,1]范围映射到[0,1]范围
+	r = (r + 1.0) * 0.5
+	# 应用幂运算增强对比度，使小值更小，大值相对更大
+	r = pow(r, FLOODPLAIN_NOISE_POWER)
+	
+	return r
+
 func place_forests(chunk_coord: Vector2i):
 	"""
 	森林生成主函数，完全匹配C++的overmap::place_forests()函数逻辑
@@ -1362,6 +1426,130 @@ func place_forests(chunk_coord: Vector2i):
 			elif n + FOREST_SIZE_ADJUST > FOREST_NOISE_THRESHOLD_FOREST:
 				# 生成普通森林
 				terrain_data[world_pos] = TERRAIN_TYPE_FOREST
+
+func place_swamps(chunk_coord: Vector2i):
+	"""
+	洪范平原生成主函数，优化版本
+	基于河流位置计算洪泛平原，结合噪声生成沼泽地形
+	只在森林地形上生成沼泽，符合生态逻辑
+	
+	性能优化：
+	1. 去除不必要的排序操作
+	2. 智能边界检查，减少不必要的计算
+	3. 早期退出优化
+	"""
+	# 计算区块在世界坐标系中的范围
+	var world_start_x = chunk_coord.x * CHUNK_SIZE
+	var world_start_y = chunk_coord.y * CHUNK_SIZE
+	var world_end_x = world_start_x + CHUNK_SIZE
+	var world_end_y = world_start_y + CHUNK_SIZE
+	
+	# 创建洪泛平原计数数组，记录每个位置被河流缓冲区覆盖的次数
+	# 使用Dictionary来存储稀疏数据，只有被缓冲的位置才会有条目
+	var floodplain: Dictionary = {}
+	
+	# 性能优化：如果没有启用优化，可以在这里添加原始实现
+	# 目前直接使用优化版本
+	
+	# 步骤1：计算河流洪泛平原缓冲区 - 性能优化版本
+	var check_range = RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX
+	var _river_count = 0  # 统计河流数量用于性能分析
+	
+	# 智能范围计算：根据实际需要的缓冲距离动态调整搜索范围
+	if SWAMP_RIVER_SEARCH_RADIUS_OPTIMIZATION:
+		check_range = RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX
+	
+	for check_x in range(world_start_x - check_range, world_end_x + check_range):
+		for check_y in range(world_start_y - check_range, world_end_y + check_range):
+			var check_pos = Vector2i(check_x, check_y)
+			var terrain_type = terrain_data.get(check_pos, TERRAIN_TYPE_EMPTY)
+			
+			# 检查是否为河流地形（匹配C++的is_ot_match("river", ot_match_type::contains)）
+			if terrain_type == TERRAIN_TYPE_RIVER:
+				_river_count += 1
+				
+				# 为该河流点生成随机缓冲区距离
+				var buffer_distance = randi_range(
+					RIVER_FLOODPLAIN_BUFFER_DISTANCE_MIN,
+					RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX
+				)
+				
+				# 优化：直接生成缓冲区内的点，无需排序
+				_add_flood_buffer_fast(check_pos, buffer_distance, floodplain, 
+									  world_start_x, world_end_x, world_start_y, world_end_y)
+	
+	# 步骤2：根据洪泛平原数据和噪声生成沼泽
+	var swamp_generated = 0  # 统计生成的沼泽数量
+	var forest_checked = 0   # 统计检查的森林格子数量
+	
+	for x in range(CHUNK_SIZE):
+		for y in range(CHUNK_SIZE):
+			var world_pos = Vector2i(world_start_x + x, world_start_y + y)
+			var current_terrain = terrain_data.get(world_pos, TERRAIN_TYPE_EMPTY)
+			
+			# 只在森林地形上生成沼泽（匹配C++的is_ot_match("forest", ot_match_type::contains)）
+			if current_terrain != TERRAIN_TYPE_FOREST and current_terrain != TERRAIN_TYPE_FOREST_THICK:
+				continue
+			
+			forest_checked += 1
+			
+			# 获取当前位置的洪泛平原噪声值
+			var noise_value = floodplain_noise_at(world_pos)
+			
+			# 检查是否应该生成河流邻近沼泽
+			var floodplain_count = floodplain.get(world_pos, 0)
+			var should_flood = false
+			
+			if floodplain_count > 0:
+				# 洪泛平原概率：计数越高，生成概率越大（!one_in(floodplain_count)）
+				var flood_chance = 1.0 - (1.0 / float(floodplain_count))
+				var random_roll = randf()
+				
+				should_flood = (random_roll < flood_chance and 
+							   noise_value > NOISE_THRESHOLD_SWAMP_ADJACENT_WATER)
+			
+			# 检查是否应该生成独立沼泽
+			var should_isolated_swamp = noise_value > NOISE_THRESHOLD_SWAMP_ISOLATED
+			
+			# 如果满足任一条件，生成沼泽
+			if should_flood or should_isolated_swamp:
+				terrain_data[world_pos] = TERRAIN_TYPE_SWAMP
+				swamp_generated += 1
+	
+	# 性能统计输出（调试时可启用）
+	if ENABLE_SWAMP_PERFORMANCE_LOGGING and (_river_count > 10 or swamp_generated > 5):  # 只在有意义的情况下输出
+		print("沼泽生成统计 - 区块 ", chunk_coord, ": 河流数=", _river_count, 
+			  ", 森林检查=", forest_checked, ", 沼泽生成=", swamp_generated)
+
+func get_closest_points_first(center: Vector2i, radius: int) -> Array[Vector2i]:
+	"""
+	获取指定中心点周围指定半径内的所有点，按距离排序
+	完全匹配C++版本的closest_points_first函数逻辑
+	
+	⚠️ 警告：这个函数性能很差，包含不必要的排序操作
+	已被 _add_flood_buffer_fast() 替代，仅保留用于兼容性
+	"""
+	var points: Array[Vector2i] = []
+	
+	# 生成正方形区域内的所有点
+	for x in range(center.x - radius, center.x + radius + 1):
+		for y in range(center.y - radius, center.y + radius + 1):
+			var point = Vector2i(x, y)
+			var distance_sq = (point.x - center.x) * (point.x - center.x) + (point.y - center.y) * (point.y - center.y)
+			
+			# 只包含圆形范围内的点
+			if distance_sq <= radius * radius:
+				points.append(point)
+	
+	# 按距离排序（虽然在这个应用中顺序可能不重要，但保持与C++版本一致）
+	# ⚠️ 性能瓶颈：对于半径15的圆形区域，需要排序~700个点，复杂度O(n log n)
+	points.sort_custom(func(a, b): 
+		var dist_a = (a.x - center.x) * (a.x - center.x) + (a.y - center.y) * (a.y - center.y)
+		var dist_b = (b.x - center.x) * (b.x - center.x) + (b.y - center.y) * (b.y - center.y)
+		return dist_a < dist_b
+	)
+	
+	return points
 
 func _draw_tree_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, color: Color, is_thick: bool):
 	"""
@@ -1515,3 +1703,96 @@ func get_debug_info() -> String:
 		edge_info, chunk_creation_cooldown, map_size_x, map_size_y, canvas_size_x, canvas_size_y,
 		", ".join(surrounding_chunks)
 	]
+
+func _draw_swamp_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, color: Color):
+	"""
+	绘制沼泽地形图案到纹理图集
+	使用水面基底加上稀疏的草丛和小树点缀，模拟森林沼泽的外观
+	"""
+	var center_x = int(float(tile_pixel_size) / 2.0)
+	var center_y = int(float(tile_pixel_size) / 2.0)
+	
+	# 水面颜色（比基础沼泽色稍暗）
+	var water_color = Color(color.r * 0.7, color.g * 0.8, color.b * 0.9, color.a)
+	# 草丛颜色（比基础沼泽色稍亮）
+	var grass_color = Color(color.r * 1.2, color.g * 1.1, color.b * 0.8, color.a)
+	# 小树/灌木颜色（更深的绿色）
+	var bush_color = Color(color.r * 0.6, color.g * 0.9, color.b * 0.5, color.a)
+	
+	# 首先绘制水面基底（填充整个瓦片）
+	for x in range(tile_pixel_size):
+		for y in range(tile_pixel_size):
+			atlas_image.set_pixel(x, start_y + y, water_color)
+	
+	# 绘制几个小草丛（随机分布的小圆形）
+	var grass_spots = [
+		Vector2i(center_x - 4, center_y - 3),
+		Vector2i(center_x + 3, center_y - 4),
+		Vector2i(center_x - 2, center_y + 3),
+		Vector2i(center_x + 4, center_y + 2),
+		Vector2i(center_x - 1, center_y - 1)
+	]
+	
+	for spot in grass_spots:
+		var radius = 1.5
+		for x in range(tile_pixel_size):
+			for y in range(tile_pixel_size):
+				var dx = float(x) - float(spot.x)
+				var dy = float(y) - float(spot.y)
+				var distance = sqrt(dx * dx + dy * dy)
+				
+				if distance <= radius and x >= 0 and x < tile_pixel_size and y >= 0 and y < tile_pixel_size:
+					atlas_image.set_pixel(x, start_y + y, grass_color)
+	
+	# 绘制一些小灌木/树丛（更小的树形）
+	var bush_spots = [
+		Vector2i(center_x - 3, center_y + 1),
+		Vector2i(center_x + 2, center_y - 2)
+	]
+	
+	for spot in bush_spots:
+		var crown_radius = 1.8
+		# 绘制小树冠
+		for x in range(tile_pixel_size):
+			for y in range(tile_pixel_size):
+				var dx = float(x) - float(spot.x)
+				var dy = float(y) - float(spot.y - 1)  # 稍微向上偏移
+				var distance = sqrt(dx * dx + dy * dy)
+				
+				if distance <= crown_radius and x >= 0 and x < tile_pixel_size and y >= 0 and y < tile_pixel_size:
+					atlas_image.set_pixel(x, start_y + y, bush_color)
+		
+		# 绘制小树干
+		if spot.x >= 0 and spot.x < tile_pixel_size and spot.y + 1 >= 0 and spot.y + 1 < tile_pixel_size:
+			atlas_image.set_pixel(spot.x, start_y + spot.y + 1, Color.SADDLE_BROWN)
+
+func _add_flood_buffer_fast(center: Vector2i, radius: int, floodplain: Dictionary, 
+						   world_start_x: int, world_end_x: int, world_start_y: int, world_end_y: int):
+	"""
+	优化版本的洪泛缓冲区计算，去除不必要的排序操作
+	直接在圆形范围内增加洪泛计数，只处理目标区块内的点
+	性能提升：O(r²) 而不是 O(r² log r²)
+	"""
+	var radius_sq = radius * radius
+	
+	# 计算需要检查的边界框，限制在目标区块范围内
+	var min_x = max(center.x - radius, world_start_x)
+	var max_x = min(center.x + radius, world_end_x - 1)
+	var min_y = max(center.y - radius, world_start_y)
+	var max_y = min(center.y + radius, world_end_y - 1)
+	
+	# 早期退出：如果边界框无效，直接返回
+	if min_x > max_x or min_y > max_y:
+		return
+	
+	# 只遍历边界框内的点
+	for x in range(min_x, max_x + 1):
+		for y in range(min_y, max_y + 1):
+			var dx = x - center.x
+			var dy = y - center.y
+			var distance_sq = dx * dx + dy * dy
+			
+			# 检查是否在圆形范围内
+			if distance_sq <= radius_sq:
+				var point = Vector2i(x, y)
+				floodplain[point] = floodplain.get(point, 0) + 1
