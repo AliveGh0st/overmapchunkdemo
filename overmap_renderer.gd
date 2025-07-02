@@ -25,7 +25,7 @@ var tile_set_resource: TileSet  ## 地形瓦片集资源
 # ============================================================================
 # 颜色方案设置（基于CDDA终端风格）
 # ============================================================================
-const TERRAIN_COLOR = Color.GREEN ## 田野/草地颜色（绿色）
+const TERRAIN_COLOR = Color.YELLOW ## 田野/草地颜色（绿色）
 const PLAYER_COLOR = Color.RED ## 玩家标记颜色（红色）
 const RIVER_COLOR = Color.BLUE ## 河流颜色（蓝色）
 const LAKE_SURFACE_COLOR = Color.BLUE ## 湖泊表面颜色（深蓝色）
@@ -1648,6 +1648,31 @@ func _draw_tree_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, co
 # 调试信息系统
 # ============================================================================
 
+func get_terrain_type(world_x: int, world_y: int) -> String:
+	"""获取指定世界坐标的地形类型描述"""
+	var world_coord = Vector2i(world_x, world_y)
+	var terrain_type = terrain_data.get(world_coord, TERRAIN_TYPE_EMPTY)
+	
+	match terrain_type:
+		TERRAIN_TYPE_EMPTY:
+			return "空地"
+		TERRAIN_TYPE_LAND:
+			return "田野/草地"
+		TERRAIN_TYPE_RIVER:
+			return "河流"
+		TERRAIN_TYPE_LAKE_SURFACE:
+			return "湖泊表面"
+		TERRAIN_TYPE_LAKE_SHORE:
+			return "湖岸"
+		TERRAIN_TYPE_FOREST:
+			return "森林"
+		TERRAIN_TYPE_FOREST_THICK:
+			return "密林"
+		TERRAIN_TYPE_SWAMP:
+			return "沼泽"
+		_:
+			return "未知 (%d)" % terrain_type
+
 func get_simple_info() -> String:
 	"""返回简化的玩家位置信息，用于UI显示"""
 	var world_pos = player_ref.global_position if player_ref else Vector2.ZERO
@@ -1657,10 +1682,12 @@ func get_simple_info() -> String:
 		int(floor(float(world_grid_x) / CHUNK_SIZE)),
 		int(floor(float(world_grid_y) / CHUNK_SIZE))
 	)
-	
-	return "位置: (%d, %d)\n区块: (%d, %d)" % [
-		world_grid_x, world_grid_y, current_chunk.x, current_chunk.y
+
+	return "位置: (%d, %d)\n区块: (%d, %d)\n地形:%s" % [
+		world_grid_x, world_grid_y, current_chunk.x, current_chunk.y, get_terrain_type(world_grid_x, world_grid_y)
 	]
+
+
 
 func get_debug_info() -> String:
 	"""返回详细的调试信息，用于开发时诊断"""
