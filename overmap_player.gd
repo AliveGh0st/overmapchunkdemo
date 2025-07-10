@@ -2,22 +2,20 @@ extends CharacterBody2D
 
 # 改进的玩家控制器，专门为overmap系统设计
 
-# 格子大小（像素）- 应与OvermapRenderer.TILE_SIZE保持一致
-const TILE_SIZE: int = 16
 # 移动速度（像素/秒）
-@export var movement_speed: float = 320.0
+@export var movement_speed: float = Config.player.MOVEMENT_SPEED
 # 是否启用格子对齐
-@export var grid_aligned: bool = true
+@export var grid_aligned: bool = Config.player.GRID_ALIGNED
 
 func _ready():
 	# 添加到玩家组，供overmap管理器查找
 	add_to_group("player")
 	# 确保玩家在地图中心（第0区块的中心）
 	# 计算区块中心的网格坐标，然后转换为像素位置
-	var chunk_center_grid = 180.0 / 2.0  # 90格子
+	var chunk_center_grid = Config.render.CHUNK_SIZE / 2.0  # 90格子
 	global_position = Vector2(
-		chunk_center_grid * TILE_SIZE + TILE_SIZE / 2.0,
-		chunk_center_grid * TILE_SIZE + TILE_SIZE / 2.0
+		chunk_center_grid * Config.render.TILE_SIZE + Config.render.TILE_SIZE / 2.0,
+		chunk_center_grid * Config.render.TILE_SIZE + Config.render.TILE_SIZE / 2.0
 	)
 	
 	# 如果启用格子对齐，调整到最近的格子中心
@@ -28,7 +26,7 @@ func _ready():
 	var collision_shape = $CollisionShape2D
 	if collision_shape:
 		var rect_shape = RectangleShape2D.new()
-		rect_shape.size = Vector2(TILE_SIZE, TILE_SIZE)
+		rect_shape.size = Vector2(Config.render.TILE_SIZE, Config.render.TILE_SIZE)
 		collision_shape.shape = rect_shape
 	
 	# 给精灵添加一个简单的颜色矩形（通常应该隐藏，因为玩家在地图上由OvermapRenderer渲染）
@@ -69,17 +67,17 @@ func snap_to_grid():
 	"""将玩家位置对齐到最近的格子中心"""
 	# 计算最近的网格中心位置
 	# 先减去半个格子大小，然后取整，再加回半个格子大小
-	var grid_x = round((global_position.x - TILE_SIZE / 2.0) / TILE_SIZE)
-	var grid_y = round((global_position.y - TILE_SIZE / 2.0) / TILE_SIZE)
+	var grid_x = round((global_position.x - Config.render.TILE_SIZE / 2.0) / Config.render.TILE_SIZE)
+	var grid_y = round((global_position.y - Config.render.TILE_SIZE / 2.0) / Config.render.TILE_SIZE)
 	
 	global_position = Vector2(
-		grid_x * TILE_SIZE + TILE_SIZE / 2.0,
-		grid_y * TILE_SIZE + TILE_SIZE / 2.0
+		grid_x * Config.render.TILE_SIZE + Config.render.TILE_SIZE / 2.0,
+		grid_y * Config.render.TILE_SIZE + Config.render.TILE_SIZE / 2.0
 	)
 
 # 获取玩家在overmap网格中的位置
 func get_grid_position() -> Vector2i:
 	return Vector2i(
-		round((global_position.x - TILE_SIZE / 2.0) / TILE_SIZE),
-		round((global_position.y - TILE_SIZE / 2.0) / TILE_SIZE)
+		round((global_position.x - Config.render.TILE_SIZE / 2.0) / Config.render.TILE_SIZE),
+		round((global_position.y - Config.render.TILE_SIZE / 2.0) / Config.render.TILE_SIZE)
 	)

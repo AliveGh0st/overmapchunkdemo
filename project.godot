@@ -15,6 +15,10 @@ run/main_scene="res://overmap_system.tscn"
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="uid://qwlevjbu4p6"
 
+[autoload]
+
+Config="*res://config_manager.gd"
+
 [debug]
 
 settings/stdout/print_fps=true

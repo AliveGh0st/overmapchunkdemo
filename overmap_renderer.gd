@@ -9,11 +9,11 @@ class_name OvermapRenderer
 # ============================================================================
 var map_size_x: int  ## 动态计算的渲染区域宽度（游戏世界格子数）
 var map_size_y: int  ## 动态计算的渲染区域高度（游戏世界格子数）
-const TILE_SIZE = 16  ## 每个瓦片的像素大小（游戏世界中一个格子的像素大小）
-const BORDER_THRESHOLD = 11  ## 触发新区块生成的边界阈值（距离边缘的格子数）
+const TILE_SIZE = Config.render.TILE_SIZE  ## 每个瓦片的像素大小（游戏世界中一个格子的像素大小）
+const BORDER_THRESHOLD = Config.render.BORDER_THRESHOLD  ## 触发新区块生成的边界阈值（距离边缘的格子数）
 var canvas_size_x: int  ## 动态计算的画布宽度（像素）
 var canvas_size_y: int  ## 动态计算的画布高度（像素）
-const CHUNK_SIZE = 180  ## 地图区块大小（每个区块的格子数量）
+const CHUNK_SIZE = Config.render.CHUNK_SIZE  ## 地图区块大小（每个区块的格子数量）
 
 # ============================================================================
 # TileMapLayer渲染系统
@@ -25,43 +25,34 @@ var tile_set_resource: TileSet  ## 地形瓦片集资源
 # ============================================================================
 # 颜色方案设置（基于CDDA终端风格）
 # ============================================================================
-const TERRAIN_COLOR = Color.YELLOW ## 田野/草地颜色（绿色）
-const PLAYER_COLOR = Color.RED ## 玩家标记颜色（红色）
-const RIVER_COLOR = Color.BLUE ## 河流颜色（蓝色）
-const LAKE_SURFACE_COLOR = Color.BLUE ## 湖泊表面颜色（深蓝色）
-const LAKE_SHORE_COLOR = Color.DARK_GRAY ## 湖岸颜色（深灰色）
-const FOREST_COLOR = Color.DARK_GREEN## 森林颜色（深绿色）
-const FOREST_THICK_COLOR = Color.FOREST_GREEN## 密林颜色（更深的绿色）
-const SWAMP_COLOR = Color(0.4, 0.6, 0.3, 1.0) ## 沼泽颜色（暗绿褐色）
+const TERRAIN_COLOR = Config.colors.TERRAIN_COLOR ## 田野/草地颜色（绿色）
+const PLAYER_COLOR = Config.colors.PLAYER_COLOR ## 玩家标记颜色（红色）
+const RIVER_COLOR = Config.colors.RIVER_COLOR ## 河流颜色（蓝色）
+const LAKE_SURFACE_COLOR = Config.colors.LAKE_SURFACE_COLOR ## 湖泊表面颜色（深蓝色）
+const LAKE_SHORE_COLOR = Config.colors.LAKE_SHORE_COLOR ## 湖岸颜色（深灰色）
+const FOREST_COLOR = Config.colors.FOREST_COLOR## 森林颜色（深绿色）
+const FOREST_THICK_COLOR = Config.colors.FOREST_THICK_COLOR## 密林颜色（更深的绿色）
+const SWAMP_COLOR = Config.colors.SWAMP_COLOR ## 沼泽颜色（暗绿褐色）
 
 # ============================================================================
 # 地形类型定义
 # ============================================================================
-const TERRAIN_TYPE_EMPTY = 0  ## 空地形（不渲染）
-const TERRAIN_TYPE_LAND = 1  ## 田野/草地
-const TERRAIN_TYPE_RIVER = 2  ## 河流
-const TERRAIN_TYPE_LAKE_SURFACE = 3 ## 湖泊表面（深水区）
-const TERRAIN_TYPE_LAKE_SHORE = 4 ## 湖岸（浅水区）
-const TERRAIN_TYPE_FOREST = 5 ## 森林
-const TERRAIN_TYPE_FOREST_THICK = 6 ## 密林
-const TERRAIN_TYPE_SWAMP = 7 ## 沼泽（森林水域）
+const TERRAIN_TYPE_EMPTY = Config.terrain.TYPE_EMPTY  ## 空地形（不渲染）
+const TERRAIN_TYPE_LAND = Config.terrain.TYPE_LAND  ## 田野/草地
+const TERRAIN_TYPE_RIVER = Config.terrain.TYPE_RIVER  ## 河流
+const TERRAIN_TYPE_LAKE_SURFACE = Config.terrain.TYPE_LAKE_SURFACE ## 湖泊表面（深水区）
+const TERRAIN_TYPE_LAKE_SHORE = Config.terrain.TYPE_LAKE_SHORE ## 湖岸（浅水区）
+const TERRAIN_TYPE_FOREST = Config.terrain.TYPE_FOREST ## 森林
+const TERRAIN_TYPE_FOREST_THICK = Config.terrain.TYPE_FOREST_THICK ## 密林
+const TERRAIN_TYPE_SWAMP = Config.terrain.TYPE_SWAMP ## 沼泽（森林水域）
 
 ## 地形类型到TileSet瓦片ID的映射关系
-const TERRAIN_TO_TILE_ID = {
-	TERRAIN_TYPE_EMPTY: -1,  ## 不放置瓦片
-	TERRAIN_TYPE_LAND: 0,
-	TERRAIN_TYPE_RIVER: 1,
-	TERRAIN_TYPE_LAKE_SURFACE: 2,
-	TERRAIN_TYPE_LAKE_SHORE: 3,
-	TERRAIN_TYPE_FOREST: 4,
-	TERRAIN_TYPE_FOREST_THICK: 5,
-	TERRAIN_TYPE_SWAMP: 6
-}
+const TERRAIN_TO_TILE_ID = Config.terrain.TERRAIN_TO_TILE_ID
 
 # ============================================================================
 # 玩家标记闪烁系统
 # ============================================================================
-const PLAYER_BLINK_ENABLED: bool = true  ## 是否启用玩家标记闪烁效果
+const PLAYER_BLINK_ENABLED: bool = Config.player.BLINK_ENABLED  ## 是否启用玩家标记闪烁效果
 
 # ============================================================================
 # 河流生成系统参数
@@ -69,21 +60,21 @@ const PLAYER_BLINK_ENABLED: bool = true  ## 是否启用玩家标记闪烁效果
 ## 河流密度参数，对应C++版本的river_scale
 ## 值越小河流越多但越细，值越大河流越少但越宽
 ## 0.0表示无河流，典型值：0.5->密集细河流，2.0->稀疏宽河流
-const RIVER_DENSITY_PARAM = 1
+const RIVER_DENSITY_PARAM = Config.river.DENSITY_PARAM
 
 # ============================================================================
 # 湖泊生成系统参数
 # ============================================================================
-const LAKE_NOISE_THRESHOLD = 0.25 ## 湖泊生成的噪声阈值，超过此值才会生成湖泊
-const LAKE_SIZE_MIN = 20 ## 湖泊最小尺寸，小于此尺寸的湖泊会被过滤掉
-const LAKE_RIVER_CONNECTION_MIN_SIZE = 65 ## 湖泊连接河流的最小尺寸阈值
-const LAKE_DEPTH = -5 ## 湖泊深度（Z轴层级，用于3D扩展）
+const LAKE_NOISE_THRESHOLD = Config.lake.NOISE_THRESHOLD ## 湖泊生成的噪声阈值，超过此值才会生成湖泊
+const LAKE_SIZE_MIN = Config.lake.SIZE_MIN ## 湖泊最小尺寸，小于此尺寸的湖泊会被过滤掉
+const LAKE_RIVER_CONNECTION_MIN_SIZE = Config.lake.RIVER_CONNECTION_MIN_SIZE ## 湖泊连接河流的最小尺寸阈值
+const LAKE_DEPTH = Config.lake.DEPTH ## 湖泊深度（Z轴层级，用于3D扩展）
 
 # 湖泊噪声生成参数
-const LAKE_NOISE_OCTAVES = 8 ## 噪声倍频数（影响细节丰富度）
-const LAKE_NOISE_PERSISTENCE = 0.5 ## 噪声持续性（影响高频细节强度）
-const LAKE_NOISE_SCALE = 0.002 ## 噪声缩放比例（影响湖泊分布的疏密）
-const LAKE_NOISE_POWER = 4.0 ## 幂运算系数，使湖泊分布更稀疏、边缘更清晰
+const LAKE_NOISE_OCTAVES = Config.lake.NOISE_OCTAVES ## 噪声倍频数（影响细节丰富度）
+const LAKE_NOISE_PERSISTENCE = Config.lake.NOISE_PERSISTENCE ## 噪声持续性（影响高频细节强度）
+const LAKE_NOISE_SCALE = Config.lake.NOISE_SCALE ## 噪声缩放比例（影响湖泊分布的疏密）
+const LAKE_NOISE_POWER = Config.lake.NOISE_POWER ## 幂运算系数，使湖泊分布更稀疏、边缘更清晰
 
 # ============================================================================
 # 核心状态管理
@@ -97,7 +88,7 @@ var generated_chunks: Dictionary = {}  ## 已生成区块记录，键为区块�
 # ============================================================================
 var player_blink_timer: float = 0.0  ## 闪烁计时器
 var player_visible: bool = true  ## 当前玩家标记是否可见
-const PLAYER_BLINK_INTERVAL: float = 0.1  ## 闪烁间隔时间（秒）
+const PLAYER_BLINK_INTERVAL: float = Config.player.BLINK_INTERVAL  ## 闪烁间隔时间（秒）
 
 # ============================================================================
 # 渲染系统状态
@@ -117,32 +108,32 @@ var lake_noise: FastNoiseLite  ## 湖泊生成噪声器
 # ============================================================================
 # 森林生成系统参数（完全匹配C++逻辑）
 # ============================================================================
-const FOREST_NOISE_THRESHOLD_FOREST = 0.25 ## 森林生成的噪声阈值
-const FOREST_NOISE_THRESHOLD_FOREST_THICK = 0.3 ## 密林生成的噪声阈值（更高）
+const FOREST_NOISE_THRESHOLD_FOREST = Config.forest.NOISE_THRESHOLD_FOREST ## 森林生成的噪声阈值
+const FOREST_NOISE_THRESHOLD_FOREST_THICK = Config.forest.NOISE_THRESHOLD_FOREST_THICK ## 密林生成的噪声阈值（更高）
 
 # 森林方向增长率参数（对应CDDA的配置选项）
 # 示例配置：使北方和东方的森林密度增加，展示方向性森林分布
-const OVERMAP_FOREST_INCREASE_NORTH: float = 0.04 ## 北方向森林增长率（负Y坐标区块森林增加）
-const OVERMAP_FOREST_INCREASE_EAST: float = 0.0 ## 东方向森林增长率（正X坐标区块森林增加）
-const OVERMAP_FOREST_INCREASE_WEST: float = 0.02 ## 西方向森林增长率
-const OVERMAP_FOREST_INCREASE_SOUTH: float = 0.0 ## 南方向森林增长率
-const OVERMAP_FOREST_LIMIT: float = 0.395 ## 森林大小上限，防止森林完全覆盖地图
+const OVERMAP_FOREST_INCREASE_NORTH: float = Config.forest.INCREASE_NORTH ## 北方向森林增长率（负Y坐标区块森林增加）
+const OVERMAP_FOREST_INCREASE_EAST: float = Config.forest.INCREASE_EAST ## 东方向森林增长率（正X坐标区块森林增加）
+const OVERMAP_FOREST_INCREASE_WEST: float = Config.forest.INCREASE_WEST ## 西方向森林增长率
+const OVERMAP_FOREST_INCREASE_SOUTH: float = Config.forest.INCREASE_SOUTH ## 南方向森林增长率
+const OVERMAP_FOREST_LIMIT: float = Config.forest.LIMIT ## 森林大小上限，防止森林完全覆盖地图
 
 # 动态森林大小调整值（替代原来的常量）
 var forest_size_adjust: float = 0.0 ## 森林大小调整值，对应C++的forest_size_adjust
 var forestosity: float = 0.0 ## 森林密度值，对应C++的forestosity
 
 # 森林噪声参数 - 第一层（基础分布）
-const FOREST_NOISE_1_OCTAVES = 4  ## 第一层噪声倍频数
-const FOREST_NOISE_1_PERSISTENCE = 0.5  ## 第一层噪声持续性
-const FOREST_NOISE_1_SCALE = 0.03  ## 第一层噪声缩放（控制森林团块大小）
-const FOREST_NOISE_1_POWER = 2.0  ## 第一层噪声幂运算系数
+const FOREST_NOISE_1_OCTAVES = Config.forest.NOISE_1_OCTAVES  ## 第一层噪声倍频数
+const FOREST_NOISE_1_PERSISTENCE = Config.forest.NOISE_1_PERSISTENCE  ## 第一层噪声持续性
+const FOREST_NOISE_1_SCALE = Config.forest.NOISE_1_SCALE  ## 第一层噪声缩放（控制森林团块大小）
+const FOREST_NOISE_1_POWER = Config.forest.NOISE_1_POWER  ## 第一层噪声幂运算系数
 
 # 森林噪声参数 - 第二层（密度减少效果）
-const FOREST_NOISE_2_OCTAVES = 6  ## 第二层噪声倍频数
-const FOREST_NOISE_2_PERSISTENCE = 0.5  ## 第二层噪声持续性
-const FOREST_NOISE_2_SCALE = 0.07  ## 第二层噪声缩放（用于创建空隙）
-const FOREST_NOISE_2_POWER = 3.0  ## 第二层噪声幂运算系数
+const FOREST_NOISE_2_OCTAVES = Config.forest.NOISE_2_OCTAVES  ## 第二层噪声倍频数
+const FOREST_NOISE_2_PERSISTENCE = Config.forest.NOISE_2_PERSISTENCE  ## 第二层噪声持续性
+const FOREST_NOISE_2_SCALE = Config.forest.NOISE_2_SCALE  ## 第二层噪声缩放（用于创建空隙）
+const FOREST_NOISE_2_POWER = Config.forest.NOISE_2_POWER  ## 第二层噪声幂运算系数
 
 # 森林噪声生成器实例
 var forest_noise_1: FastNoiseLite ## 第一层噪声生成器 - 森林基础分布
@@ -152,23 +143,23 @@ var forest_noise_2: FastNoiseLite ## 第二层噪声生成器 - 森林密度减�
 # 洪范平原（沼泽）生成系统参数（完全匹配C++逻辑）
 # ============================================================================
 ## 河流洪泛平原缓冲区距离范围（以格子为单位）
-const RIVER_FLOODPLAIN_BUFFER_DISTANCE_MIN = 3
-const RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX = 15
+const RIVER_FLOODPLAIN_BUFFER_DISTANCE_MIN = Config.swamp.RIVER_FLOODPLAIN_BUFFER_DISTANCE_MIN
+const RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX = Config.swamp.RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX
 
 ## 沼泽生成噪声阈值
-const NOISE_THRESHOLD_SWAMP_ADJACENT_WATER = 0.3  # 河流邻近沼泽阈值
-const NOISE_THRESHOLD_SWAMP_ISOLATED = 0.6        # 独立沼泽阈值
+const NOISE_THRESHOLD_SWAMP_ADJACENT_WATER = Config.swamp.NOISE_THRESHOLD_ADJACENT_WATER  # 河流邻近沼泽阈值
+const NOISE_THRESHOLD_SWAMP_ISOLATED = Config.swamp.NOISE_THRESHOLD_ISOLATED        # 独立沼泽阈值
 
 ## 性能优化参数
-const ENABLE_SWAMP_PERFORMANCE_OPTIMIZATIONS = true  # 启用性能优化
-const SWAMP_RIVER_SEARCH_RADIUS_OPTIMIZATION = true  # 优化河流搜索半径
-const ENABLE_SWAMP_PERFORMANCE_LOGGING = false       # 启用性能统计日志
+const ENABLE_SWAMP_PERFORMANCE_OPTIMIZATIONS = Config.swamp.ENABLE_PERFORMANCE_OPTIMIZATIONS  # 启用性能优化
+const SWAMP_RIVER_SEARCH_RADIUS_OPTIMIZATION = Config.swamp.RIVER_SEARCH_RADIUS_OPTIMIZATION  # 优化河流搜索半径
+const ENABLE_SWAMP_PERFORMANCE_LOGGING = Config.swamp.ENABLE_PERFORMANCE_LOGGING       # 启用性能统计日志
 
 # 洪泛平原噪声参数（对应C++的om_noise_layer_floodplain）
-const FLOODPLAIN_NOISE_OCTAVES = 4      ## 噪声倍频数
-const FLOODPLAIN_NOISE_PERSISTENCE = 0.5 ## 噪声持续性
-const FLOODPLAIN_NOISE_SCALE = 0.05     ## 噪声缩放比例
-const FLOODPLAIN_NOISE_POWER = 2.0      ## 幂运算系数
+const FLOODPLAIN_NOISE_OCTAVES = Config.swamp.FLOODPLAIN_NOISE_OCTAVES      ## 噪声倍频数
+const FLOODPLAIN_NOISE_PERSISTENCE = Config.swamp.FLOODPLAIN_NOISE_PERSISTENCE ## 噪声持续性
+const FLOODPLAIN_NOISE_SCALE = Config.swamp.FLOODPLAIN_NOISE_SCALE     ## 噪声缩放比例
+const FLOODPLAIN_NOISE_POWER = Config.swamp.FLOODPLAIN_NOISE_POWER      ## 幂运算系数
 
 # 洪泛平原噪声生成器实例
 var floodplain_noise: FastNoiseLite ## 洪泛平原噪声生成器
@@ -180,7 +171,7 @@ var world_seed: int = 0  ## 世界种子，确保所有噪声生成器使用相�
 
 # 性能优化控制
 var chunk_creation_cooldown: float = 0.0  ## 区块创建冷却计时器，防止频繁生成
-var COOLDOWN_TIME: float = 0.1  ## 区块创建冷却时间（秒）
+var COOLDOWN_TIME: float = Config.performance.CHUNK_CREATION_COOLDOWN_TIME  ## 区块创建冷却时间（秒）
 
 # ============================================================================
 # 视口管理函数
@@ -1211,7 +1202,6 @@ func _place_river_between_points(start_point: Vector2i, end_point: Vector2i):
 # ============================================================================
 # 森林生成系统（完全匹配C++逻辑）
 # ============================================================================
-
 # ============================================================================
 # 森林密度计算系统（完全匹配C++逻辑）
 # ============================================================================
