@@ -119,7 +119,18 @@ var lake_noise: FastNoiseLite  ## 湖泊生成噪声器
 # ============================================================================
 const FOREST_NOISE_THRESHOLD_FOREST = 0.25 ## 森林生成的噪声阈值
 const FOREST_NOISE_THRESHOLD_FOREST_THICK = 0.3 ## 密林生成的噪声阈值（更高）
-const FOREST_SIZE_ADJUST = 0.0 ## 森林大小调整值，对应C++的forest_size_adjust
+
+# 森林方向增长率参数（对应CDDA的配置选项）
+# 示例配置：使北方和东方的森林密度增加，展示方向性森林分布
+const OVERMAP_FOREST_INCREASE_NORTH: float = 0.04 ## 北方向森林增长率（负Y坐标区块森林增加）
+const OVERMAP_FOREST_INCREASE_EAST: float = 0.0 ## 东方向森林增长率（正X坐标区块森林增加）
+const OVERMAP_FOREST_INCREASE_WEST: float = 0.02 ## 西方向森林增长率
+const OVERMAP_FOREST_INCREASE_SOUTH: float = 0.0 ## 南方向森林增长率
+const OVERMAP_FOREST_LIMIT: float = 0.395 ## 森林大小上限，防止森林完全覆盖地图
+
+# 动态森林大小调整值（替代原来的常量）
+var forest_size_adjust: float = 0.0 ## 森林大小调整值，对应C++的forest_size_adjust
+var forestosity: float = 0.0 ## 森林密度值，对应C++的forestosity
 
 # 森林噪声参数 - 第一层（基础分布）
 const FOREST_NOISE_1_OCTAVES = 4  ## 第一层噪声倍频数
@@ -619,19 +630,23 @@ func generate_chunk_at(chunk_coord: Vector2i):
 			
 			terrain_data[Vector2i(world_x, world_y)] = TERRAIN_TYPE_LAND
 	
-	print("Generated terrain data for chunk ", chunk_coord, " - terrain_data size: ", terrain_data.size())
+	# print("Generated terrain data for chunk ", chunk_coord, " - terrain_data size: ", terrain_data.size())
 	
 	# 按顺序生成各种地物
-	# 1. 生成河流（避开将来的湖泊位置）
+
+	# 1. 计算当前区块的森林密度（在生成森林之前）
+	calculate_forestosity(chunk_coord)
+
+	# 2. 生成河流（避开将来的湖泊位置）
 	if RIVER_DENSITY_PARAM > 0.0:
 		place_rivers(chunk_coord)
 	
 	# 2. 生成湖泊（可能会覆盖部分河流）
 	place_lakes(chunk_coord)
-	
-	# 3. 生成森林（在所有水体生成后）
+
+	# 3. 生成森林（在所有水体生成后，森林密度计算后）
 	place_forests(chunk_coord)
-	
+
 	# 4. 生成洪范平原沼泽（在森林生成后，基于河流生成洪泛平原）
 	place_swamps(chunk_coord)
 
@@ -1198,6 +1213,50 @@ func _place_river_between_points(start_point: Vector2i, end_point: Vector2i):
 # ============================================================================
 
 # ============================================================================
+# 森林密度计算系统（完全匹配C++逻辑）
+# ============================================================================
+
+func calculate_forestosity(chunk_coord: Vector2i):
+	"""
+	计算当前区块的森林密度调整值
+	根据区块在世界中的位置和4个方向的森林增长率参数来动态调整森林大小
+	完全匹配C++版本的overmap::calculate_forestosity()函数
+	"""
+	# 获取当前区块的世界绝对坐标（对应C++的point_abs_om this_om = pos()）
+	var this_om_x = chunk_coord.x
+	var this_om_y = chunk_coord.y
+	
+	# 重置森林大小调整值
+	forest_size_adjust = 0.0
+	
+	# 西方向森林增长率影响（x < 0的区块）
+	if OVERMAP_FOREST_INCREASE_WEST != 0.0 and this_om_x < 0:
+		forest_size_adjust -= this_om_x * OVERMAP_FOREST_INCREASE_WEST
+	
+	# 北方向森林增长率影响（y < 0的区块）
+	if OVERMAP_FOREST_INCREASE_NORTH != 0.0 and this_om_y < 0:
+		forest_size_adjust -= this_om_y * OVERMAP_FOREST_INCREASE_NORTH
+	
+	# 东方向森林增长率影响（x > 0的区块）
+	if OVERMAP_FOREST_INCREASE_EAST != 0.0 and this_om_x > 0:
+		forest_size_adjust += this_om_x * OVERMAP_FOREST_INCREASE_EAST
+	
+	# 南方向森林增长率影响（y > 0的区块）
+	if OVERMAP_FOREST_INCREASE_SOUTH != 0.0 and this_om_y > 0:
+		forest_size_adjust += this_om_y * OVERMAP_FOREST_INCREASE_SOUTH
+	
+	# 计算forestosity值（对应C++的forestosity = forest_size_adjust * 25.0f）
+	forestosity = forest_size_adjust * 25.0
+	
+	# 确保森林大小永远不会完全覆盖地图（对应C++的森林上限检查）
+	# forest_size_adjust不能超过 (森林上限 - 森林噪声阈值)
+	var max_forest_adjust = OVERMAP_FOREST_LIMIT - FOREST_NOISE_THRESHOLD_FOREST
+	forest_size_adjust = min(forest_size_adjust, max_forest_adjust)
+	
+	# 调试输出（对应C++的debugmsg，可以根据需要启用）
+	# print("forestosity = %.2f at OM %d, %d" % [forestosity, this_om_x, this_om_y])
+	
+# ============================================================================
 # 画布渲染更新系统
 # ============================================================================
 
@@ -1378,7 +1437,7 @@ func forest_noise_at(world_pos: Vector2i) -> float:
 	d = pow(d, FOREST_NOISE_2_POWER)
 	
 	# 返回最终噪声值（基础分布减去密度减少效果）
-	return max(0.0, r - d * 0.5)
+	return max(0.0, r - d *  0.5)
 
 func floodplain_noise_at(world_pos: Vector2i) -> float:
 	"""
@@ -1420,10 +1479,10 @@ func place_forests(chunk_coord: Vector2i):
 			var n = forest_noise_at(world_pos)
 			
 			# 根据噪声值和阈值决定森林类型
-			if n + FOREST_SIZE_ADJUST > FOREST_NOISE_THRESHOLD_FOREST_THICK:
+			if n + forest_size_adjust > FOREST_NOISE_THRESHOLD_FOREST_THICK:
 				# 生成密林
 				terrain_data[world_pos] = TERRAIN_TYPE_FOREST_THICK
-			elif n + FOREST_SIZE_ADJUST > FOREST_NOISE_THRESHOLD_FOREST:
+			elif n + forest_size_adjust > FOREST_NOISE_THRESHOLD_FOREST:
 				# 生成普通森林
 				terrain_data[world_pos] = TERRAIN_TYPE_FOREST
 
@@ -1683,8 +1742,9 @@ func get_simple_info() -> String:
 		int(floor(float(world_grid_y) / CHUNK_SIZE))
 	)
 
-	return "位置: (%d, %d)\n区块: (%d, %d)\n地形:%s" % [
-		world_grid_x, world_grid_y, current_chunk.x, current_chunk.y, get_terrain_type(world_grid_x, world_grid_y)
+	return "位置: (%d, %d)\n区块: (%d, %d)\n地形: %s\n森林密度: %.3f" % [
+		world_grid_x, world_grid_y, current_chunk.x, current_chunk.y, 
+		get_terrain_type(world_grid_x, world_grid_y), forest_size_adjust
 	]
 
 

@@ -61,6 +61,28 @@ const PLAYER_BLINK_INTERVAL: float = 0.1  # 闪烁间隔（秒）
 - 设置 `PLAYER_BLINK_ENABLED = true` 启用闪烁效果，玩家标记会按设定间隔闪烁
 - `PLAYER_BLINK_INTERVAL` 控制闪烁的速度，数值越小闪烁越快
 
+### 森林方向性生成控制
+在 `overmap_renderer.gd` 文件中新增了基于区块位置的森林密度调整功能，完全匹配Cataclysm DDA的森林生成系统：
+
+```gdscript
+# 森林方向增长率参数（对应CDDA的配置选项）
+const OVERMAP_FOREST_INCREASE_NORTH: float = 0.01  # 北方向森林增长率
+const OVERMAP_FOREST_INCREASE_EAST: float = 0.015  # 东方向森林增长率  
+const OVERMAP_FOREST_INCREASE_WEST: float = 0.0   # 西方向森林增长率
+const OVERMAP_FOREST_INCREASE_SOUTH: float = 0.0  # 南方向森林增长率
+const OVERMAP_FOREST_LIMIT: float = 0.8           # 森林大小上限
+```
+
+#### 森林密度计算原理
+- **方向性增长**: 不同方向的区块会根据增长率参数调整森林密度
+- **距离影响**: 距离原点越远的区块，方向性效果越明显
+- **北方/西方**: 负坐标区块，增长率乘以坐标的绝对值
+- **南方/东方**: 正坐标区块，增长率直接乘以坐标值
+- **上限保护**: 森林密度不会超过设定上限，防止地图被森林完全覆盖
+
+#### 调试信息
+游戏界面左下角的调试信息现在会显示当前区块的森林密度值，方便观察不同位置的森林生成效果。
+
 ## 技术实现
 
 1. **连续世界**: 使用世界坐标系统，支持无限扩展
