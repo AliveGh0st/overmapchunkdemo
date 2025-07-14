@@ -253,28 +253,28 @@ func reset_runtime_config() -> void:
 
 ## 快速访问常用配置
 func get_tile_size() -> int:
-	return render.TILE_SIZE
+	return RenderConfig.TILE_SIZE
 
 func get_chunk_size() -> int:
-	return render.CHUNK_SIZE
+	return RenderConfig.CHUNK_SIZE
 
 func get_player_color() -> Color:
-	return colors.PLAYER_COLOR
+	return ColorConfig.PLAYER_COLOR
 
 func get_terrain_color(terrain_type: int) -> Color:
 	match terrain_type:
-		terrain.TYPE_LAND: return colors.TERRAIN_COLOR
-		terrain.TYPE_RIVER: return colors.RIVER_COLOR
-		terrain.TYPE_LAKE_SURFACE: return colors.LAKE_SURFACE_COLOR
-		terrain.TYPE_LAKE_SHORE: return colors.LAKE_SHORE_COLOR
-		terrain.TYPE_FOREST: return colors.FOREST_COLOR
-		terrain.TYPE_FOREST_THICK: return colors.FOREST_THICK_COLOR
-		terrain.TYPE_SWAMP: return colors.SWAMP_COLOR
+		TerrainConfig.TYPE_LAND: return ColorConfig.TERRAIN_COLOR
+		TerrainConfig.TYPE_RIVER: return ColorConfig.RIVER_COLOR
+		TerrainConfig.TYPE_LAKE_SURFACE: return ColorConfig.LAKE_SURFACE_COLOR
+		TerrainConfig.TYPE_LAKE_SHORE: return ColorConfig.LAKE_SHORE_COLOR
+		TerrainConfig.TYPE_FOREST: return ColorConfig.FOREST_COLOR
+		TerrainConfig.TYPE_FOREST_THICK: return ColorConfig.FOREST_THICK_COLOR
+		TerrainConfig.TYPE_SWAMP: return ColorConfig.SWAMP_COLOR
 		_: return Color.WHITE
 
 ## 获取地形类型对应的瓦片ID
 func get_tile_id_for_terrain(terrain_type: int) -> int:
-	return terrain.TERRAIN_TO_TILE_ID.get(terrain_type, -1)
+	return TerrainConfig.TERRAIN_TO_TILE_ID.get(terrain_type, -1)
 
 # ============================================================================
 # 调试和诊断
@@ -284,8 +284,8 @@ func get_tile_id_for_terrain(terrain_type: int) -> int:
 func get_config_summary() -> String:
 	var summary = []
 	summary.append("=== ConfigManager Summary ===")
-	summary.append("Tile Size: %d" % render.TILE_SIZE)
-	summary.append("Chunk Size: %d" % render.CHUNK_SIZE)
+	summary.append("Tile Size: %d" % RenderConfig.TILE_SIZE)
+	summary.append("Chunk Size: %d" % RenderConfig.CHUNK_SIZE)
 	summary.append("Debug Mode: %s" % str(runtime_config.debug_mode))
 	summary.append("Forest Adjust: %.3f" % runtime_config.forest_size_adjust)
 	summary.append("==============================")

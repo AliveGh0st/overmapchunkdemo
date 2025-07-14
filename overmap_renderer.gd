@@ -9,11 +9,8 @@ class_name OvermapRenderer
 # ============================================================================
 var map_size_x: int  ## 动态计算的渲染区域宽度（游戏世界格子数）
 var map_size_y: int  ## 动态计算的渲染区域高度（游戏世界格子数）
-const TILE_SIZE = Config.render.TILE_SIZE  ## 每个瓦片的像素大小（游戏世界中一个格子的像素大小）
-const BORDER_THRESHOLD = Config.render.BORDER_THRESHOLD  ## 触发新区块生成的边界阈值（距离边缘的格子数）
 var canvas_size_x: int  ## 动态计算的画布宽度（像素）
 var canvas_size_y: int  ## 动态计算的画布高度（像素）
-const CHUNK_SIZE = Config.render.CHUNK_SIZE  ## 地图区块大小（每个区块的格子数量）
 
 # ============================================================================
 # TileMapLayer渲染系统
@@ -22,59 +19,8 @@ var tile_map_layer: TileMapLayer  ## 地形渲染图层
 var player_tile_map_layer: TileMapLayer  ## 玩家标记渲染图层（独立于地形图层）
 var tile_set_resource: TileSet  ## 地形瓦片集资源
 
-# ============================================================================
-# 颜色方案设置（基于CDDA终端风格）
-# ============================================================================
-const TERRAIN_COLOR = Config.colors.TERRAIN_COLOR ## 田野/草地颜色（绿色）
-const PLAYER_COLOR = Config.colors.PLAYER_COLOR ## 玩家标记颜色（红色）
-const RIVER_COLOR = Config.colors.RIVER_COLOR ## 河流颜色（蓝色）
-const LAKE_SURFACE_COLOR = Config.colors.LAKE_SURFACE_COLOR ## 湖泊表面颜色（深蓝色）
-const LAKE_SHORE_COLOR = Config.colors.LAKE_SHORE_COLOR ## 湖岸颜色（深灰色）
-const FOREST_COLOR = Config.colors.FOREST_COLOR## 森林颜色（深绿色）
-const FOREST_THICK_COLOR = Config.colors.FOREST_THICK_COLOR## 密林颜色（更深的绿色）
-const SWAMP_COLOR = Config.colors.SWAMP_COLOR ## 沼泽颜色（暗绿褐色）
 
-# ============================================================================
-# 地形类型定义
-# ============================================================================
-const TERRAIN_TYPE_EMPTY = Config.terrain.TYPE_EMPTY  ## 空地形（不渲染）
-const TERRAIN_TYPE_LAND = Config.terrain.TYPE_LAND  ## 田野/草地
-const TERRAIN_TYPE_RIVER = Config.terrain.TYPE_RIVER  ## 河流
-const TERRAIN_TYPE_LAKE_SURFACE = Config.terrain.TYPE_LAKE_SURFACE ## 湖泊表面（深水区）
-const TERRAIN_TYPE_LAKE_SHORE = Config.terrain.TYPE_LAKE_SHORE ## 湖岸（浅水区）
-const TERRAIN_TYPE_FOREST = Config.terrain.TYPE_FOREST ## 森林
-const TERRAIN_TYPE_FOREST_THICK = Config.terrain.TYPE_FOREST_THICK ## 密林
-const TERRAIN_TYPE_SWAMP = Config.terrain.TYPE_SWAMP ## 沼泽（森林水域）
 
-## 地形类型到TileSet瓦片ID的映射关系
-const TERRAIN_TO_TILE_ID = Config.terrain.TERRAIN_TO_TILE_ID
-
-# ============================================================================
-# 玩家标记闪烁系统
-# ============================================================================
-const PLAYER_BLINK_ENABLED: bool = Config.player.BLINK_ENABLED  ## 是否启用玩家标记闪烁效果
-
-# ============================================================================
-# 河流生成系统参数
-# ============================================================================
-## 河流密度参数，对应C++版本的river_scale
-## 值越小河流越多但越细，值越大河流越少但越宽
-## 0.0表示无河流，典型值：0.5->密集细河流，2.0->稀疏宽河流
-const RIVER_DENSITY_PARAM = Config.river.DENSITY_PARAM
-
-# ============================================================================
-# 湖泊生成系统参数
-# ============================================================================
-const LAKE_NOISE_THRESHOLD = Config.lake.NOISE_THRESHOLD ## 湖泊生成的噪声阈值，超过此值才会生成湖泊
-const LAKE_SIZE_MIN = Config.lake.SIZE_MIN ## 湖泊最小尺寸，小于此尺寸的湖泊会被过滤掉
-const LAKE_RIVER_CONNECTION_MIN_SIZE = Config.lake.RIVER_CONNECTION_MIN_SIZE ## 湖泊连接河流的最小尺寸阈值
-const LAKE_DEPTH = Config.lake.DEPTH ## 湖泊深度（Z轴层级，用于3D扩展）
-
-# 湖泊噪声生成参数
-const LAKE_NOISE_OCTAVES = Config.lake.NOISE_OCTAVES ## 噪声倍频数（影响细节丰富度）
-const LAKE_NOISE_PERSISTENCE = Config.lake.NOISE_PERSISTENCE ## 噪声持续性（影响高频细节强度）
-const LAKE_NOISE_SCALE = Config.lake.NOISE_SCALE ## 噪声缩放比例（影响湖泊分布的疏密）
-const LAKE_NOISE_POWER = Config.lake.NOISE_POWER ## 幂运算系数，使湖泊分布更稀疏、边缘更清晰
 
 # ============================================================================
 # 核心状态管理
@@ -88,7 +34,6 @@ var generated_chunks: Dictionary = {}  ## 已生成区块记录，键为区块�
 # ============================================================================
 var player_blink_timer: float = 0.0  ## 闪烁计时器
 var player_visible: bool = true  ## 当前玩家标记是否可见
-const PLAYER_BLINK_INTERVAL: float = Config.player.BLINK_INTERVAL  ## 闪烁间隔时间（秒）
 
 # ============================================================================
 # 渲染系统状态
@@ -105,61 +50,14 @@ var rendered_area: Rect2i = Rect2i()  ## 当前已渲染的屏幕区域
 # ============================================================================
 var lake_noise: FastNoiseLite  ## 湖泊生成噪声器
 
-# ============================================================================
-# 森林生成系统参数（完全匹配C++逻辑）
-# ============================================================================
-const FOREST_NOISE_THRESHOLD_FOREST = Config.forest.NOISE_THRESHOLD_FOREST ## 森林生成的噪声阈值
-const FOREST_NOISE_THRESHOLD_FOREST_THICK = Config.forest.NOISE_THRESHOLD_FOREST_THICK ## 密林生成的噪声阈值（更高）
-
-# 森林方向增长率参数（对应CDDA的配置选项）
-# 示例配置：使北方和东方的森林密度增加，展示方向性森林分布
-const OVERMAP_FOREST_INCREASE_NORTH: float = Config.forest.INCREASE_NORTH ## 北方向森林增长率（负Y坐标区块森林增加）
-const OVERMAP_FOREST_INCREASE_EAST: float = Config.forest.INCREASE_EAST ## 东方向森林增长率（正X坐标区块森林增加）
-const OVERMAP_FOREST_INCREASE_WEST: float = Config.forest.INCREASE_WEST ## 西方向森林增长率
-const OVERMAP_FOREST_INCREASE_SOUTH: float = Config.forest.INCREASE_SOUTH ## 南方向森林增长率
-const OVERMAP_FOREST_LIMIT: float = Config.forest.LIMIT ## 森林大小上限，防止森林完全覆盖地图
-
 # 动态森林大小调整值（替代原来的常量）
 var forest_size_adjust: float = 0.0 ## 森林大小调整值，对应C++的forest_size_adjust
 var forestosity: float = 0.0 ## 森林密度值，对应C++的forestosity
-
-# 森林噪声参数 - 第一层（基础分布）
-const FOREST_NOISE_1_OCTAVES = Config.forest.NOISE_1_OCTAVES  ## 第一层噪声倍频数
-const FOREST_NOISE_1_PERSISTENCE = Config.forest.NOISE_1_PERSISTENCE  ## 第一层噪声持续性
-const FOREST_NOISE_1_SCALE = Config.forest.NOISE_1_SCALE  ## 第一层噪声缩放（控制森林团块大小）
-const FOREST_NOISE_1_POWER = Config.forest.NOISE_1_POWER  ## 第一层噪声幂运算系数
-
-# 森林噪声参数 - 第二层（密度减少效果）
-const FOREST_NOISE_2_OCTAVES = Config.forest.NOISE_2_OCTAVES  ## 第二层噪声倍频数
-const FOREST_NOISE_2_PERSISTENCE = Config.forest.NOISE_2_PERSISTENCE  ## 第二层噪声持续性
-const FOREST_NOISE_2_SCALE = Config.forest.NOISE_2_SCALE  ## 第二层噪声缩放（用于创建空隙）
-const FOREST_NOISE_2_POWER = Config.forest.NOISE_2_POWER  ## 第二层噪声幂运算系数
 
 # 森林噪声生成器实例
 var forest_noise_1: FastNoiseLite ## 第一层噪声生成器 - 森林基础分布
 var forest_noise_2: FastNoiseLite ## 第二层噪声生成器 - 森林密度减少效果
 
-# ============================================================================
-# 洪范平原（沼泽）生成系统参数（完全匹配C++逻辑）
-# ============================================================================
-## 河流洪泛平原缓冲区距离范围（以格子为单位）
-const RIVER_FLOODPLAIN_BUFFER_DISTANCE_MIN = Config.swamp.RIVER_FLOODPLAIN_BUFFER_DISTANCE_MIN
-const RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX = Config.swamp.RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX
-
-## 沼泽生成噪声阈值
-const NOISE_THRESHOLD_SWAMP_ADJACENT_WATER = Config.swamp.NOISE_THRESHOLD_ADJACENT_WATER  # 河流邻近沼泽阈值
-const NOISE_THRESHOLD_SWAMP_ISOLATED = Config.swamp.NOISE_THRESHOLD_ISOLATED        # 独立沼泽阈值
-
-## 性能优化参数
-const ENABLE_SWAMP_PERFORMANCE_OPTIMIZATIONS = Config.swamp.ENABLE_PERFORMANCE_OPTIMIZATIONS  # 启用性能优化
-const SWAMP_RIVER_SEARCH_RADIUS_OPTIMIZATION = Config.swamp.RIVER_SEARCH_RADIUS_OPTIMIZATION  # 优化河流搜索半径
-const ENABLE_SWAMP_PERFORMANCE_LOGGING = Config.swamp.ENABLE_PERFORMANCE_LOGGING       # 启用性能统计日志
-
-# 洪泛平原噪声参数（对应C++的om_noise_layer_floodplain）
-const FLOODPLAIN_NOISE_OCTAVES = Config.swamp.FLOODPLAIN_NOISE_OCTAVES      ## 噪声倍频数
-const FLOODPLAIN_NOISE_PERSISTENCE = Config.swamp.FLOODPLAIN_NOISE_PERSISTENCE ## 噪声持续性
-const FLOODPLAIN_NOISE_SCALE = Config.swamp.FLOODPLAIN_NOISE_SCALE     ## 噪声缩放比例
-const FLOODPLAIN_NOISE_POWER = Config.swamp.FLOODPLAIN_NOISE_POWER      ## 幂运算系数
 
 # 洪泛平原噪声生成器实例
 var floodplain_noise: FastNoiseLite ## 洪泛平原噪声生成器
@@ -171,7 +69,6 @@ var world_seed: int = 0  ## 世界种子，确保所有噪声生成器使用相�
 
 # 性能优化控制
 var chunk_creation_cooldown: float = 0.0  ## 区块创建冷却计时器，防止频繁生成
-var COOLDOWN_TIME: float = Config.performance.CHUNK_CREATION_COOLDOWN_TIME  ## 区块创建冷却时间（秒）
 
 # ============================================================================
 # 视口管理函数
@@ -183,12 +80,12 @@ func update_viewport_size():
 	计算需要渲染的游戏世界格子数量和对应的像素画布大小
 	"""
 	var viewport_size = get_viewport().get_visible_rect().size
-	# 将视口像素大小转换为游戏世界格子数（每格TILE_SIZE像素）
-	map_size_x = int(viewport_size.x / TILE_SIZE)
-	map_size_y = int(viewport_size.y / TILE_SIZE)
+	# 将视口像素大小转换为游戏世界格子数（每格Config.RenderConfig.TILE_SIZE像素）
+	map_size_x = int(viewport_size.x / Config.RenderConfig.TILE_SIZE)
+	map_size_y = int(viewport_size.y / Config.RenderConfig.TILE_SIZE)
 	# 计算对应的像素画布大小
-	canvas_size_x = map_size_x * TILE_SIZE
-	canvas_size_y = map_size_y * TILE_SIZE
+	canvas_size_x = map_size_x * Config.RenderConfig.TILE_SIZE
+	canvas_size_y = map_size_y * Config.RenderConfig.TILE_SIZE
 
 func _on_viewport_size_changed():
 	"""
@@ -254,9 +151,9 @@ func _process(delta):
 		chunk_creation_cooldown -= delta
 	
 	# 处理玩家标记闪烁效果
-	if PLAYER_BLINK_ENABLED:
+	if Config.PlayerConfig.BLINK_ENABLED:
 		player_blink_timer += delta
-		if player_blink_timer >= PLAYER_BLINK_INTERVAL:
+		if player_blink_timer >= Config.PlayerConfig.BLINK_INTERVAL:
 			player_blink_timer = 0.0
 			player_visible = !player_visible
 			render_dirty = true  # 标记需要重新渲染以显示闪烁效果
@@ -273,8 +170,8 @@ func _process(delta):
 	# 获取当前玩家世界位置（以游戏世界格子为单位）
 	var world_pos = player_ref.global_position
 	var current_world_pos = Vector2i(
-		int(world_pos.x / TILE_SIZE),
-		int(world_pos.y / TILE_SIZE)
+		int(world_pos.x / Config.RenderConfig.TILE_SIZE),
+		int(world_pos.y / Config.RenderConfig.TILE_SIZE)
 	)
 	
 	# 只有当玩家位置发生变化或标记为dirty时才重新渲染
@@ -323,24 +220,24 @@ func create_terrain_tileset() -> TileSet:
 	"""
 	var tileset = TileSet.new()
 	# 设置瓦片大小与游戏世界格子大小匹配
-	tileset.tile_size = Vector2i(TILE_SIZE, TILE_SIZE)
+	tileset.tile_size = Vector2i(Config.RenderConfig.TILE_SIZE, Config.RenderConfig.TILE_SIZE)
 	
 	# 创建TileSetAtlasSource用于管理瓦片纹理
 	var atlas_source = TileSetAtlasSource.new()
 	
 	# 定义各地形类型对应的颜色
 	var terrain_colors = [
-		TERRAIN_COLOR,          # TERRAIN_TYPE_LAND = 0 (田野)
-		RIVER_COLOR,            # TERRAIN_TYPE_RIVER = 1 (河流)
-		LAKE_SURFACE_COLOR,     # TERRAIN_TYPE_LAKE_SURFACE = 2 (湖泊表面)
-		LAKE_SHORE_COLOR,       # TERRAIN_TYPE_LAKE_SHORE = 3 (湖岸)
-		FOREST_COLOR,           # TERRAIN_TYPE_FOREST = 4 (森林)
-		FOREST_THICK_COLOR,     # TERRAIN_TYPE_FOREST_THICK = 5 (密林)
-		SWAMP_COLOR             # TERRAIN_TYPE_SWAMP = 6 (沼泽)
+		Config.ColorConfig.TERRAIN_COLOR,          # Config.TerrainConfig.TYPE_LAND = 0 (田野)
+		Config.ColorConfig.RIVER_COLOR,            # Config.TerrainConfig.TYPE_RIVER = 1 (河流)
+		Config.ColorConfig.LakeConfig.SURFACE_COLOR,     # Config.TerrainConfig.TYPE_LAKE_SURFACE = 2 (湖泊表面)
+		Config.ColorConfig.LakeConfig.SHORE_COLOR,       # Config.TerrainConfig.TYPE_LAKE_SHORE = 3 (湖岸)
+		Config.ColorConfig.ForestConfig.COLOR,           # Config.TerrainConfig.TYPE_FOREST = 4 (森林)
+		Config.ColorConfig.ForestConfig.THICK_COLOR,     # Config.TerrainConfig.TYPE_FOREST_THICK = 5 (密林)
+		Config.ColorConfig.SwampConfig.COLOR             # Config.TerrainConfig.TYPE_SWAMP = 6 (沼泽)
 	]
 	
-	# 创建纹理图集，每个瓦片TILE_SIZE×TILE_SIZE像素
-	var tile_pixel_size = TILE_SIZE
+	# 创建纹理图集，每个瓦片Config.RenderConfig.TILE_SIZE×Config.RenderConfig.TILE_SIZE像素
+	var tile_pixel_size = Config.RenderConfig.TILE_SIZE
 	var atlas_image = Image.create(tile_pixel_size, tile_pixel_size * terrain_colors.size(), false, Image.FORMAT_RGBA8)
 	
 	# 为每种地形类型生成对应的纹理
@@ -354,8 +251,8 @@ func create_terrain_tileset() -> TileSet:
 				atlas_image.set_pixel(x, start_y + y, Color(0, 0, 0, 0))
 		
 		# 为田野地形绘制特殊的草地图案（三条竖线）
-		if i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_LAND]:
-			var grass_color = TERRAIN_COLOR
+		if i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_LAND]:
+			var grass_color = Config.ColorConfig.TERRAIN_COLOR
 			var mid_x = int(float(tile_pixel_size) / 2.0)
 			var bottom_y = tile_pixel_size - 1
 
@@ -386,11 +283,11 @@ func create_terrain_tileset() -> TileSet:
 						atlas_image.set_pixel(right_x, start_y + y_grass, grass_color)
 		
 		# 为森林和密林绘制树形图案
-		elif i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_FOREST] or i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_FOREST_THICK]:
-			_draw_tree_shape(atlas_image, start_y, tile_pixel_size, color, i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_FOREST_THICK])
+		elif i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_FOREST] or i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_FOREST_THICK]:
+			_draw_tree_shape(atlas_image, start_y, tile_pixel_size, color, i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_FOREST_THICK])
 		
 		# 为沼泽绘制特殊的水草混合图案
-		elif i == TERRAIN_TO_TILE_ID[TERRAIN_TYPE_SWAMP]:
+		elif i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_SWAMP]:
 			_draw_swamp_shape(atlas_image, start_y, tile_pixel_size, color)
 		
 		else:
@@ -431,17 +328,17 @@ func create_player_tileset() -> TileSet:
 	只包含玩家标记瓦片，与地形图层分离以便独立控制
 	"""
 	var tileset = TileSet.new()
-	tileset.tile_size = Vector2i(TILE_SIZE, TILE_SIZE)
+	tileset.tile_size = Vector2i(Config.RenderConfig.TILE_SIZE, Config.RenderConfig.TILE_SIZE)
 	
 	# 创建TileSetAtlasSource
 	var atlas_source = TileSetAtlasSource.new()
 	
 	# 为玩家标记创建纹理
-	var tile_pixel_size = TILE_SIZE
+	var tile_pixel_size = Config.RenderConfig.TILE_SIZE
 	var atlas_image = Image.create(tile_pixel_size, tile_pixel_size, false, Image.FORMAT_RGBA8)
 	
 	# 设置玩家标记参数
-	var player_color = PLAYER_COLOR
+	var player_color = Config.ColorConfig.PLAYER_COLOR
 	var center_x = float(tile_pixel_size) / 2.0
 	var center_y = float(tile_pixel_size) / 2.0
 	var radius = float(tile_pixel_size) / 2.0 - 0.5
@@ -486,10 +383,10 @@ func setup_lake_noise():
 	"""
 	lake_noise = FastNoiseLite.new()
 	lake_noise.seed = world_seed  # 使用全局种子确保一致性
-	lake_noise.frequency = LAKE_NOISE_SCALE
+	lake_noise.frequency = Config.LakeConfig.NOISE_SCALE
 	lake_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	lake_noise.fractal_octaves = LAKE_NOISE_OCTAVES
-	lake_noise.fractal_gain = LAKE_NOISE_PERSISTENCE
+	lake_noise.fractal_octaves = Config.LakeConfig.NOISE_OCTAVES
+	lake_noise.fractal_gain = Config.LakeConfig.NOISE_PERSISTENCE
 
 func setup_forest_noise():
 	"""
@@ -499,18 +396,18 @@ func setup_forest_noise():
 	# 第一层噪声 - 森林基础分布
 	forest_noise_1 = FastNoiseLite.new()
 	forest_noise_1.seed = world_seed  # 使用全局种子
-	forest_noise_1.frequency = FOREST_NOISE_1_SCALE
+	forest_noise_1.frequency = Config.ForestConfig.NOISE_1_SCALE
 	forest_noise_1.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	forest_noise_1.fractal_octaves = FOREST_NOISE_1_OCTAVES
-	forest_noise_1.fractal_gain = FOREST_NOISE_1_PERSISTENCE
+	forest_noise_1.fractal_octaves = Config.ForestConfig.NOISE_1_OCTAVES
+	forest_noise_1.fractal_gain = Config.ForestConfig.NOISE_1_PERSISTENCE
 	
 	# 第二层噪声 - 森林密度减少效果
 	forest_noise_2 = FastNoiseLite.new()
 	forest_noise_2.seed = world_seed  # 使用稍微不同的种子避免完全相同
-	forest_noise_2.frequency = FOREST_NOISE_2_SCALE
+	forest_noise_2.frequency = Config.ForestConfig.NOISE_2_SCALE
 	forest_noise_2.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	forest_noise_2.fractal_octaves = FOREST_NOISE_2_OCTAVES
-	forest_noise_2.fractal_gain = FOREST_NOISE_2_PERSISTENCE
+	forest_noise_2.fractal_octaves = Config.ForestConfig.NOISE_2_OCTAVES
+	forest_noise_2.fractal_gain = Config.ForestConfig.NOISE_2_PERSISTENCE
 
 func setup_floodplain_noise():
 	"""
@@ -519,10 +416,10 @@ func setup_floodplain_noise():
 	"""
 	floodplain_noise = FastNoiseLite.new()
 	floodplain_noise.seed = world_seed# 使用独特的种子
-	floodplain_noise.frequency = FLOODPLAIN_NOISE_SCALE
+	floodplain_noise.frequency = Config.SwampConfig.FLOODPLAIN_NOISE_SCALE
 	floodplain_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	floodplain_noise.fractal_octaves = FLOODPLAIN_NOISE_OCTAVES
-	floodplain_noise.fractal_gain = FLOODPLAIN_NOISE_PERSISTENCE
+	floodplain_noise.fractal_octaves = Config.SwampConfig.FLOODPLAIN_NOISE_OCTAVES
+	floodplain_noise.fractal_gain = Config.SwampConfig.FLOODPLAIN_NOISE_PERSISTENCE
 
 # ============================================================================
 # 区块生成管理系统
@@ -537,27 +434,27 @@ func check_and_generate_chunks():
 		return
 	
 	var world_pos = player_ref.global_position
-	var world_grid_x = int(world_pos.x / TILE_SIZE)
-	var world_grid_y = int(world_pos.y / TILE_SIZE)
+	var world_grid_x = int(world_pos.x / Config.RenderConfig.TILE_SIZE)
+	var world_grid_y = int(world_pos.y / Config.RenderConfig.TILE_SIZE)
 	
 	# 计算玩家当前所在的区块坐标
 	var current_chunk = Vector2i(
-		int(floor(float(world_grid_x) / CHUNK_SIZE)),
-		int(floor(float(world_grid_y) / CHUNK_SIZE))
+		int(floor(float(world_grid_x) / Config.RenderConfig.CHUNK_SIZE)),
+		int(floor(float(world_grid_y) / Config.RenderConfig.CHUNK_SIZE))
 	)
 	
 	# 计算玩家在当前区块内的相对位置
-	var local_x = world_grid_x - current_chunk.x * CHUNK_SIZE
-	var local_y = world_grid_y - current_chunk.y * CHUNK_SIZE
+	var local_x = world_grid_x - current_chunk.x * Config.RenderConfig.CHUNK_SIZE
+	var local_y = world_grid_y - current_chunk.y * Config.RenderConfig.CHUNK_SIZE
 	
 	# 检查是否接近区块边缘
 	var need_generation = false
 	
 	# 检查4个主要方向的边缘状态
-	var near_left = local_x < BORDER_THRESHOLD
-	var near_right = local_x >= CHUNK_SIZE - BORDER_THRESHOLD
-	var near_top = local_y < BORDER_THRESHOLD
-	var near_bottom = local_y >= CHUNK_SIZE - BORDER_THRESHOLD
+	var near_left = local_x < Config.RenderConfig.BORDER_THRESHOLD
+	var near_right = local_x >= Config.RenderConfig.CHUNK_SIZE - Config.RenderConfig.BORDER_THRESHOLD
+	var near_top = local_y < Config.RenderConfig.BORDER_THRESHOLD
+	var near_bottom = local_y >= Config.RenderConfig.CHUNK_SIZE - Config.RenderConfig.BORDER_THRESHOLD
 	
 	# 生成主要方向的相邻区块
 	if near_left:
@@ -592,7 +489,7 @@ func check_and_generate_chunks():
 	
 	# 设置冷却时间防止频繁生成
 	if need_generation:
-		chunk_creation_cooldown = COOLDOWN_TIME
+		chunk_creation_cooldown = Config.PerformanceConfig.CHUNK_CREATION_COOLDOWN_TIME
 
 func generate_chunk_at(chunk_coord: Vector2i):
 	"""
@@ -608,18 +505,18 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	render_dirty = true  # 标记需要重新渲染
 	
 	# 计算区块在世界坐标系中的起始位置
-	var world_start_x = chunk_coord.x * CHUNK_SIZE
-	var world_start_y = chunk_coord.y * CHUNK_SIZE
+	var world_start_x = chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
+	var world_start_y = chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
 	
 	print("Generating chunk at: ", chunk_coord, " world start: ", Vector2i(world_start_x, world_start_y))
 	
 	# 生成基础地形（默认为田野）
-	for x_local in range(CHUNK_SIZE):
-		for y_local in range(CHUNK_SIZE):
+	for x_local in range(Config.RenderConfig.CHUNK_SIZE):
+		for y_local in range(Config.RenderConfig.CHUNK_SIZE):
 			var world_x = world_start_x + x_local
 			var world_y = world_start_y + y_local
 			
-			terrain_data[Vector2i(world_x, world_y)] = TERRAIN_TYPE_LAND
+			terrain_data[Vector2i(world_x, world_y)] = Config.TerrainConfig.TYPE_LAND
 	
 	# print("Generated terrain data for chunk ", chunk_coord, " - terrain_data size: ", terrain_data.size())
 	
@@ -629,7 +526,7 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	calculate_forestosity(chunk_coord)
 
 	# 2. 生成河流（避开将来的湖泊位置）
-	if RIVER_DENSITY_PARAM > 0.0:
+	if Config.RiverConfig.DENSITY_PARAM > 0.0:
 		place_rivers(chunk_coord)
 	
 	# 2. 生成湖泊（可能会覆盖部分河流）
@@ -652,16 +549,16 @@ func place_rivers(p_chunk_coord: Vector2i):
 	避免在湖泊位置生成河流，减少地形冲突
 	"""
 	# 河流生成参数计算
-	var river_placement_chance_divider = int(max(1.0, 1.0 / RIVER_DENSITY_PARAM))
-	var river_brush_size_factor = int(max(1.0, RIVER_DENSITY_PARAM))
+	var river_placement_chance_divider = int(max(1.0, 1.0 / Config.RiverConfig.DENSITY_PARAM))
+	var river_brush_size_factor = int(max(1.0, Config.RiverConfig.DENSITY_PARAM))
 
 	var river_starts_local: Array[Vector2i] = [] # 河流起点（区块内坐标）
 	var river_ends_local: Array[Vector2i] = []   # 河流终点（区块内坐标）
 
 	# 检查河流地形的辅助函数
 	var is_world_coord_river = func(world_coord: Vector2i):
-		var terrain_type = terrain_data.get(world_coord, TERRAIN_TYPE_EMPTY)
-		return terrain_type == TERRAIN_TYPE_RIVER
+		var terrain_type = terrain_data.get(world_coord, Config.TerrainConfig.TYPE_EMPTY)
+		return terrain_type == Config.TerrainConfig.TYPE_RIVER
 
 	# === 处理与相邻区块的河流连接 ===
 	
@@ -669,14 +566,14 @@ func place_rivers(p_chunk_coord: Vector2i):
 	var starts_from_north_added = 0
 	var north_chunk_coord = p_chunk_coord + Vector2i(0, -1)
 	if generated_chunks.has(north_chunk_coord):
-		for i in range(2, CHUNK_SIZE - 2):
-			var p_neighbour_world = _local_to_world(Vector2i(i, CHUNK_SIZE - 1), north_chunk_coord)
+		for i in range(2, Config.RenderConfig.CHUNK_SIZE - 2):
+			var p_neighbour_world = _local_to_world(Vector2i(i, Config.RenderConfig.CHUNK_SIZE - 1), north_chunk_coord)
 			var p_mine_local = Vector2i(i, 0)
 			var p_mine_world = _local_to_world(p_mine_local, p_chunk_coord)
 
 			# 如果邻居有河流，延续到当前区块
 			if is_world_coord_river.call(p_neighbour_world):
-				terrain_data[p_mine_world] = TERRAIN_TYPE_RIVER
+				terrain_data[p_mine_world] = Config.TerrainConfig.TYPE_RIVER
 			
 			# 检查是否需要创建新的河流起点
 			if is_world_coord_river.call(p_neighbour_world) and \
@@ -694,13 +591,13 @@ func place_rivers(p_chunk_coord: Vector2i):
 	var starts_from_west_added = 0
 	var west_chunk_coord = p_chunk_coord + Vector2i(-1, 0)
 	if generated_chunks.has(west_chunk_coord):
-		for i in range(2, CHUNK_SIZE - 2):
-			var p_neighbour_world = _local_to_world(Vector2i(CHUNK_SIZE - 1, i), west_chunk_coord)
+		for i in range(2, Config.RenderConfig.CHUNK_SIZE - 2):
+			var p_neighbour_world = _local_to_world(Vector2i(Config.RenderConfig.CHUNK_SIZE - 1, i), west_chunk_coord)
 			var p_mine_local = Vector2i(0, i)
 			var p_mine_world = _local_to_world(p_mine_local, p_chunk_coord)
 
 			if is_world_coord_river.call(p_neighbour_world):
-				terrain_data[p_mine_world] = TERRAIN_TYPE_RIVER
+				terrain_data[p_mine_world] = Config.TerrainConfig.TYPE_RIVER
 
 			if is_world_coord_river.call(p_neighbour_world) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(0, 1)) and \
@@ -715,13 +612,13 @@ func place_rivers(p_chunk_coord: Vector2i):
 	var ends_from_south_added = 0
 	var south_chunk_coord = p_chunk_coord + Vector2i(0, 1)
 	if generated_chunks.has(south_chunk_coord):
-		for i in range(2, CHUNK_SIZE - 2):
+		for i in range(2, Config.RenderConfig.CHUNK_SIZE - 2):
 			var p_neighbour_world = _local_to_world(Vector2i(i, 0), south_chunk_coord)
-			var p_mine_local = Vector2i(i, CHUNK_SIZE - 1)
+			var p_mine_local = Vector2i(i, Config.RenderConfig.CHUNK_SIZE - 1)
 			var p_mine_world = _local_to_world(p_mine_local, p_chunk_coord)
 
 			if is_world_coord_river.call(p_neighbour_world):
-				terrain_data[p_mine_world] = TERRAIN_TYPE_RIVER
+				terrain_data[p_mine_world] = Config.TerrainConfig.TYPE_RIVER
 
 			if is_world_coord_river.call(p_neighbour_world) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(1, 0)) and \
@@ -738,13 +635,13 @@ func place_rivers(p_chunk_coord: Vector2i):
 	var ends_from_east_added = 0
 	var east_chunk_coord = p_chunk_coord + Vector2i(1, 0)
 	if generated_chunks.has(east_chunk_coord):
-		for i in range(2, CHUNK_SIZE - 2):
+		for i in range(2, Config.RenderConfig.CHUNK_SIZE - 2):
 			var p_neighbour_world = _local_to_world(Vector2i(0, i), east_chunk_coord)
-			var p_mine_local = Vector2i(CHUNK_SIZE - 1, i)
+			var p_mine_local = Vector2i(Config.RenderConfig.CHUNK_SIZE - 1, i)
 			var p_mine_world = _local_to_world(p_mine_local, p_chunk_coord)
 
 			if is_world_coord_river.call(p_neighbour_world):
-				terrain_data[p_mine_world] = TERRAIN_TYPE_RIVER
+				terrain_data[p_mine_world] = Config.TerrainConfig.TYPE_RIVER
 			
 			if is_world_coord_river.call(p_neighbour_world) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(0, 1)) and \
@@ -767,9 +664,9 @@ func place_rivers(p_chunk_coord: Vector2i):
 		while river_starts_local.is_empty() or river_starts_local.size() + 1 < river_ends_local.size():
 			new_rivers_buffer.clear()
 			if not has_north_neighbor and _one_in(river_placement_chance_divider):
-				new_rivers_buffer.append(Vector2i(randi_range(10, CHUNK_SIZE - 11), 0))
+				new_rivers_buffer.append(Vector2i(randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11), 0))
 			if not has_west_neighbor and _one_in(river_placement_chance_divider):
-				new_rivers_buffer.append(Vector2i(0, randi_range(10, CHUNK_SIZE - 11)))
+				new_rivers_buffer.append(Vector2i(0, randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11)))
 			if not new_rivers_buffer.is_empty():
 				river_starts_local.append(_random_entry(new_rivers_buffer))
 			else:
@@ -780,9 +677,9 @@ func place_rivers(p_chunk_coord: Vector2i):
 		while river_ends_local.is_empty() or river_ends_local.size() + 1 < river_starts_local.size():
 			new_rivers_buffer.clear()
 			if not has_south_neighbor and _one_in(river_placement_chance_divider):
-				new_rivers_buffer.append(Vector2i(randi_range(10, CHUNK_SIZE - 11), CHUNK_SIZE - 1))
+				new_rivers_buffer.append(Vector2i(randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11), Config.RenderConfig.CHUNK_SIZE - 1))
 			if not has_east_neighbor and _one_in(river_placement_chance_divider):
-				new_rivers_buffer.append(Vector2i(CHUNK_SIZE - 1, randi_range(10, CHUNK_SIZE - 11)))
+				new_rivers_buffer.append(Vector2i(Config.RenderConfig.CHUNK_SIZE - 1, randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11)))
 			if not new_rivers_buffer.is_empty():
 				river_ends_local.append(_random_entry(new_rivers_buffer))
 			else:
@@ -823,8 +720,8 @@ func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loc
 	使用随机游走算法，逐步向目标移动并应用笔刷效果
 	完全匹配C++版本的place_river函数逻辑
 	"""
-	var river_chance = int(max(1.0, 1.0 / RIVER_DENSITY_PARAM))
-	var river_scale = int(max(1.0, RIVER_DENSITY_PARAM))
+	var river_chance = int(max(1.0, 1.0 / Config.RiverConfig.DENSITY_PARAM))
+	var river_scale = int(max(1.0, Config.RiverConfig.DENSITY_PARAM))
 
 	var p2_local = pa_local # 当前位置（区块内坐标）
 	
@@ -837,39 +734,39 @@ func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loc
 		# 确保坐标在区块边界内
 		if p2_local.x < 0:
 			p2_local.x = 0
-		if p2_local.x > CHUNK_SIZE - 1:
-			p2_local.x = CHUNK_SIZE - 1
+		if p2_local.x > Config.RenderConfig.CHUNK_SIZE - 1:
+			p2_local.x = Config.RenderConfig.CHUNK_SIZE - 1
 		if p2_local.y < 0:
 			p2_local.y = 0
-		if p2_local.y > CHUNK_SIZE - 1:
-			p2_local.y = CHUNK_SIZE - 1
+		if p2_local.y > Config.RenderConfig.CHUNK_SIZE - 1:
+			p2_local.y = Config.RenderConfig.CHUNK_SIZE - 1
 		
 		# 应用河流笔刷（第一次）
 		for i in range(-1 * river_scale, 1 * river_scale + 1):
 			for j in range(-1 * river_scale, 1 * river_scale + 1):
 				var brush_point_local = p2_local + Vector2i(j, i)
-				if brush_point_local.y >= 0 and brush_point_local.y < CHUNK_SIZE and brush_point_local.x >= 0 and brush_point_local.x < CHUNK_SIZE:
+				if brush_point_local.y >= 0 and brush_point_local.y < Config.RenderConfig.CHUNK_SIZE and brush_point_local.x >= 0 and brush_point_local.x < Config.RenderConfig.CHUNK_SIZE:
 					var world_coord = _local_to_world(brush_point_local, p_chunk_coord)
 					# 避免在湖泊位置放置河流，按概率放置
 					if not _is_lake_at(world_coord) and _one_in(river_chance):
-						terrain_data[world_coord] = TERRAIN_TYPE_RIVER
+						terrain_data[world_coord] = Config.TerrainConfig.TYPE_RIVER
 		
 		# 第二步：向目标移动（C++原版的复杂移动逻辑）
-		if pb_local.x > p2_local.x and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < pb_local.x - p2_local.x or \
-		(randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > pb_local.x - p2_local.x and \
-			randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(pb_local.y - p2_local.y))):
+		if pb_local.x > p2_local.x and (randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 1.2) - 1) < pb_local.x - p2_local.x or \
+		(randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 0.2) - 1) > pb_local.x - p2_local.x and \
+			randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 0.2) - 1) > abs(pb_local.y - p2_local.y))):
 			p2_local.x += 1
-		if pb_local.x < p2_local.x and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < p2_local.x - pb_local.x or \
-		(randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > p2_local.x - pb_local.x and \
-			randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(pb_local.y - p2_local.y))):
+		if pb_local.x < p2_local.x and (randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 1.2) - 1) < p2_local.x - pb_local.x or \
+		(randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 0.2) - 1) > p2_local.x - pb_local.x and \
+			randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 0.2) - 1) > abs(pb_local.y - p2_local.y))):
 			p2_local.x -= 1
-		if pb_local.y > p2_local.y and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < pb_local.y - p2_local.y or \
-		(randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > pb_local.y - p2_local.y and \
-			randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
+		if pb_local.y > p2_local.y and (randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 1.2) - 1) < pb_local.y - p2_local.y or \
+		(randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 0.2) - 1) > pb_local.y - p2_local.y and \
+			randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
 			p2_local.y += 1
-		if pb_local.y < p2_local.y and (randi_range(0, int(CHUNK_SIZE * 1.2) - 1) < p2_local.y - pb_local.y or \
-		(randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > p2_local.y - pb_local.y and \
-			randi_range(0, int(CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
+		if pb_local.y < p2_local.y and (randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 1.2) - 1) < p2_local.y - pb_local.y or \
+		(randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 0.2) - 1) > p2_local.y - pb_local.y and \
+			randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
 			p2_local.y -= 1
 
 # ============================================================================
@@ -877,19 +774,19 @@ func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loc
 # ============================================================================
 func _is_lake_at(world_coord: Vector2i) -> bool:
 	"""检查指定世界坐标是否是湖泊地形（仅检查已生成的地形类型）"""
-	var terrain_type = terrain_data.get(world_coord, TERRAIN_TYPE_EMPTY)
-	return terrain_type == TERRAIN_TYPE_LAKE_SURFACE or terrain_type == TERRAIN_TYPE_LAKE_SHORE
+	var terrain_type = terrain_data.get(world_coord, Config.TerrainConfig.TYPE_EMPTY)
+	return terrain_type == Config.TerrainConfig.TYPE_LAKE_SURFACE or terrain_type == Config.TerrainConfig.TYPE_LAKE_SHORE
 
 func _local_to_world(local_pos: Vector2i, p_chunk_coord: Vector2i) -> Vector2i:
 	"""将区块内坐标转换为世界坐标"""
-	var world_start_x = p_chunk_coord.x * CHUNK_SIZE
-	var world_start_y = p_chunk_coord.y * CHUNK_SIZE
+	var world_start_x = p_chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
+	var world_start_y = p_chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
 	return Vector2i(world_start_x + local_pos.x, world_start_y + local_pos.y)
 
 func _is_inbounds_local(local_pos: Vector2i, border: int = 0) -> bool:
 	"""检查区块内坐标是否在边界范围内"""
-	return (local_pos.x >= border and local_pos.x < CHUNK_SIZE - border and \
-			local_pos.y >= border and local_pos.y < CHUNK_SIZE - border)
+	return (local_pos.x >= border and local_pos.x < Config.RenderConfig.CHUNK_SIZE - border and \
+			local_pos.y >= border and local_pos.y < Config.RenderConfig.CHUNK_SIZE - border)
 
 func _one_in(chance: int) -> bool:
 	"""
@@ -928,14 +825,14 @@ func place_lakes(chunk_coord: Vector2i):
 	自动连接大型湖泊到最近的河流系统
 	"""
 	# 计算区块在世界坐标系中的起始位置
-	var world_start_x = chunk_coord.x * CHUNK_SIZE
-	var world_start_y = chunk_coord.y * CHUNK_SIZE
+	var world_start_x = chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
+	var world_start_y = chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
 	
 	# 湖泊检测函数（匹配C++的lambda表达式）
 	var is_lake = func(p: Vector2i) -> bool:
 		# 边界检查（允许一定的边界扩展）
 		var inbounds = p.x > world_start_x - 5 and p.y > world_start_y - 5 and \
-					   p.x < world_start_x + CHUNK_SIZE + 5 and p.y < world_start_y + CHUNK_SIZE + 5
+					   p.x < world_start_x + Config.RenderConfig.CHUNK_SIZE + 5 and p.y < world_start_y + Config.RenderConfig.CHUNK_SIZE + 5
 		if not inbounds:
 			return false
 		# 噪声检查
@@ -945,8 +842,8 @@ func place_lakes(chunk_coord: Vector2i):
 	var visited: Dictionary = {}
 	
 	# 遍历区块内所有位置寻找湖泊种子点
-	for i in range(CHUNK_SIZE):
-		for j in range(CHUNK_SIZE):
+	for i in range(Config.RenderConfig.CHUNK_SIZE):
+		for j in range(Config.RenderConfig.CHUNK_SIZE):
 			var seed_point = Vector2i(world_start_x + i, world_start_y + j)
 			
 			# 跳过已访问的位置
@@ -961,7 +858,7 @@ func place_lakes(chunk_coord: Vector2i):
 			var lake_points = _point_flood_fill_4_connected(seed_point, visited, is_lake)
 			
 			# 过滤掉过小的湖泊
-			if lake_points.size() < LAKE_SIZE_MIN:
+			if lake_points.size() < Config.LakeConfig.SIZE_MIN:
 				continue
 			
 			# 构建湖泊点集合（包括湖泊点和所有河流点）
@@ -970,11 +867,11 @@ func place_lakes(chunk_coord: Vector2i):
 				lake_set[p] = true
 			
 			# 将所有河流点添加到湖泊集合（C++逻辑）
-			for x in range(CHUNK_SIZE):
-				for y in range(CHUNK_SIZE):
+			for x in range(Config.RenderConfig.CHUNK_SIZE):
+				for y in range(Config.RenderConfig.CHUNK_SIZE):
 					var p = Vector2i(world_start_x + x, world_start_y + y)
-					var terrain_type = terrain_data.get(p, TERRAIN_TYPE_EMPTY)
-					if terrain_type == TERRAIN_TYPE_RIVER:
+					var terrain_type = terrain_data.get(p, Config.TerrainConfig.TYPE_EMPTY)
+					if terrain_type == Config.TerrainConfig.TYPE_RIVER:
 						lake_set[p] = true
 			
 			# 处理湖泊点，区分表面和岸边
@@ -997,9 +894,9 @@ func place_lakes(chunk_coord: Vector2i):
 				
 				# 设置地形类型
 				if shore:
-					terrain_data[p] = TERRAIN_TYPE_LAKE_SHORE
+					terrain_data[p] = Config.TerrainConfig.TYPE_LAKE_SHORE
 				else:
-					terrain_data[p] = TERRAIN_TYPE_LAKE_SURFACE
+					terrain_data[p] = Config.TerrainConfig.TYPE_LAKE_SURFACE
 			
 			# 连接大型湖泊到河流系统
 			_connect_lake_to_rivers_cpp_style(lake_points, chunk_coord)
@@ -1043,14 +940,14 @@ func _connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord
 		return
 	
 	# 检查湖泊大小是否达到连接阈值
-	if lake_points.size() < LAKE_RIVER_CONNECTION_MIN_SIZE:
+	if lake_points.size() < Config.LakeConfig.RIVER_CONNECTION_MIN_SIZE:
 		return
 	
 	# 检查湖泊是否已经与河流重叠
 	var lake_has_river = false
 	for lake_point in lake_points:
-		var terrain_type = terrain_data.get(lake_point, TERRAIN_TYPE_EMPTY)
-		if terrain_type == TERRAIN_TYPE_RIVER:
+		var terrain_type = terrain_data.get(lake_point, Config.TerrainConfig.TYPE_EMPTY)
+		if terrain_type == Config.TerrainConfig.TYPE_RIVER:
 			lake_has_river = true
 			break
 	
@@ -1066,15 +963,15 @@ func _connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord
 		
 		# 搜索所有已生成区块中的河流
 		for chunk_coord_key in generated_chunks.keys():
-			var world_start_x = chunk_coord_key.x * CHUNK_SIZE
-			var world_start_y = chunk_coord_key.y * CHUNK_SIZE
+			var world_start_x = chunk_coord_key.x * Config.RenderConfig.CHUNK_SIZE
+			var world_start_y = chunk_coord_key.y * Config.RenderConfig.CHUNK_SIZE
 			
-			for x in range(CHUNK_SIZE):
-				for y in range(CHUNK_SIZE):
+			for x in range(Config.RenderConfig.CHUNK_SIZE):
+				for y in range(Config.RenderConfig.CHUNK_SIZE):
 					var p = Vector2i(world_start_x + x, world_start_y + y)
-					var terrain_type = terrain_data.get(p, TERRAIN_TYPE_EMPTY)
+					var terrain_type = terrain_data.get(p, Config.TerrainConfig.TYPE_EMPTY)
 					
-					if terrain_type != TERRAIN_TYPE_RIVER:
+					if terrain_type != Config.TerrainConfig.TYPE_RIVER:
 						continue
 					
 					# 计算距离
@@ -1122,17 +1019,17 @@ func _is_lake_noise_at(world_pos: Vector2i) -> bool:
 	# 规范化到0-1范围
 	noise_value = (noise_value + 1.0) * 0.5
 	# 应用幂运算使分布更稀疏、边缘更清晰
-	noise_value = pow(noise_value, LAKE_NOISE_POWER)
+	noise_value = pow(noise_value, Config.LakeConfig.NOISE_POWER)
 	
-	return noise_value > LAKE_NOISE_THRESHOLD
+	return noise_value > Config.LakeConfig.NOISE_THRESHOLD
 
 func _is_world_point_in_chunk(world_pos: Vector2i, chunk_coord: Vector2i) -> bool:
 	"""检查世界坐标点是否在指定区块范围内"""
-	var world_start_x = chunk_coord.x * CHUNK_SIZE
-	var world_start_y = chunk_coord.y * CHUNK_SIZE
+	var world_start_x = chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
+	var world_start_y = chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
 	
-	return (world_pos.x >= world_start_x and world_pos.x < world_start_x + CHUNK_SIZE and
-			world_pos.y >= world_start_y and world_pos.y < world_start_y + CHUNK_SIZE)
+	return (world_pos.x >= world_start_x and world_pos.x < world_start_x + Config.RenderConfig.CHUNK_SIZE and
+			world_pos.y >= world_start_y and world_pos.y < world_start_y + Config.RenderConfig.CHUNK_SIZE)
 
 func _square_dist(p1: Vector2i, p2: Vector2i) -> int:
 	"""计算两点间的平方距离（避免开方运算提高性能）"""
@@ -1149,8 +1046,8 @@ func _place_river_between_points(start_point: Vector2i, end_point: Vector2i):
 	在两个世界坐标点之间绘制河流连接
 	用于连接湖泊到最近的河流，可能跨越多个区块
 	"""
-	var river_chance = int(max(1.0, 1.0 / RIVER_DENSITY_PARAM))
-	var river_scale = int(max(1.0, RIVER_DENSITY_PARAM))
+	var river_chance = int(max(1.0, 1.0 / Config.RiverConfig.DENSITY_PARAM))
+	var river_scale = int(max(1.0, Config.RiverConfig.DENSITY_PARAM))
 
 	var p2 = start_point
 
@@ -1164,10 +1061,10 @@ func _place_river_between_points(start_point: Vector2i, end_point: Vector2i):
 			for j in range(-1 * river_scale, 1 * river_scale + 1):
 				var brush_point = p2 + Vector2i(j, i)
 				if _one_in(river_chance):
-					terrain_data[brush_point] = TERRAIN_TYPE_RIVER
+					terrain_data[brush_point] = Config.TerrainConfig.TYPE_RIVER
 		
 		# 第二步：向目标移动（复杂的方向性移动逻辑）
-		var WORLD_SIZE_FACTOR = CHUNK_SIZE * 10
+		var WORLD_SIZE_FACTOR = Config.RenderConfig.CHUNK_SIZE * 10
 		if end_point.x > p2.x and (randi_range(0, int(WORLD_SIZE_FACTOR * 1.2) - 1) < end_point.x - p2.x or \
 			(randi_range(0, int(WORLD_SIZE_FACTOR * 0.2) - 1) > end_point.x - p2.x and \
 			randi_range(0, int(WORLD_SIZE_FACTOR * 0.2) - 1) > abs(end_point.y - p2.y))):
@@ -1197,7 +1094,7 @@ func _place_river_between_points(start_point: Vector2i, end_point: Vector2i):
 				# 如果接近目标或符合概率就放置河流
 				var is_near_target = abs(end_point.y - brush_point.y) < 4 and abs(end_point.x - brush_point.x) < 4
 				if is_near_target or _one_in(river_chance):
-					terrain_data[brush_point] = TERRAIN_TYPE_RIVER
+					terrain_data[brush_point] = Config.TerrainConfig.TYPE_RIVER
 
 # ============================================================================
 # 森林生成系统（完全匹配C++逻辑）
@@ -1220,27 +1117,27 @@ func calculate_forestosity(chunk_coord: Vector2i):
 	forest_size_adjust = 0.0
 	
 	# 西方向森林增长率影响（x < 0的区块）
-	if OVERMAP_FOREST_INCREASE_WEST != 0.0 and this_om_x < 0:
-		forest_size_adjust -= this_om_x * OVERMAP_FOREST_INCREASE_WEST
+	if Config.ForestConfig.INCREASE_WEST != 0.0 and this_om_x < 0:
+		forest_size_adjust -= this_om_x * Config.ForestConfig.INCREASE_WEST
 	
 	# 北方向森林增长率影响（y < 0的区块）
-	if OVERMAP_FOREST_INCREASE_NORTH != 0.0 and this_om_y < 0:
-		forest_size_adjust -= this_om_y * OVERMAP_FOREST_INCREASE_NORTH
+	if Config.ForestConfig.INCREASE_NORTH != 0.0 and this_om_y < 0:
+		forest_size_adjust -= this_om_y * Config.ForestConfig.INCREASE_NORTH
 	
 	# 东方向森林增长率影响（x > 0的区块）
-	if OVERMAP_FOREST_INCREASE_EAST != 0.0 and this_om_x > 0:
-		forest_size_adjust += this_om_x * OVERMAP_FOREST_INCREASE_EAST
+	if Config.ForestConfig.INCREASE_EAST != 0.0 and this_om_x > 0:
+		forest_size_adjust += this_om_x * Config.ForestConfig.INCREASE_EAST
 	
 	# 南方向森林增长率影响（y > 0的区块）
-	if OVERMAP_FOREST_INCREASE_SOUTH != 0.0 and this_om_y > 0:
-		forest_size_adjust += this_om_y * OVERMAP_FOREST_INCREASE_SOUTH
+	if Config.ForestConfig.INCREASE_SOUTH != 0.0 and this_om_y > 0:
+		forest_size_adjust += this_om_y * Config.ForestConfig.INCREASE_SOUTH
 	
 	# 计算forestosity值（对应C++的forestosity = forest_size_adjust * 25.0f）
 	forestosity = forest_size_adjust * 25.0
 	
 	# 确保森林大小永远不会完全覆盖地图（对应C++的森林上限检查）
 	# forest_size_adjust不能超过 (森林上限 - 森林噪声阈值)
-	var max_forest_adjust = OVERMAP_FOREST_LIMIT - FOREST_NOISE_THRESHOLD_FOREST
+	var max_forest_adjust = Config.ForestConfig.LIMIT - Config.ForestConfig.NOISE_THRESHOLD_FOREST
 	forest_size_adjust = min(forest_size_adjust, max_forest_adjust)
 	
 	# 调试输出（对应C++的debugmsg，可以根据需要启用）
@@ -1257,13 +1154,13 @@ func update_canvas_rendering():
 	"""
 	# 获取玩家当前世界位置（游戏世界格子坐标）
 	var world_pos = player_ref.global_position
-	var center_world_x = int(world_pos.x / TILE_SIZE)
-	var center_world_y = int(world_pos.y / TILE_SIZE)
+	var center_world_x = int(world_pos.x / Config.RenderConfig.TILE_SIZE)
+	var center_world_y = int(world_pos.y / Config.RenderConfig.TILE_SIZE)
 	
 	# 计算当前可见区域范围
 	var viewport_size = get_viewport().get_visible_rect().size
-	var half_view_tiles_x = int(viewport_size.x / (TILE_SIZE * 2)) + 5  # 添加缓冲区
-	var half_view_tiles_y = int(viewport_size.y / (TILE_SIZE * 2)) + 5
+	var half_view_tiles_x = int(viewport_size.x / (Config.RenderConfig.TILE_SIZE * 2)) + 5  # 添加缓冲区
+	var half_view_tiles_y = int(viewport_size.y / (Config.RenderConfig.TILE_SIZE * 2)) + 5
 	
 	var render_start_x = center_world_x - half_view_tiles_x
 	var render_start_y = center_world_y - half_view_tiles_y
@@ -1356,9 +1253,9 @@ func render_terrain_in_area(area: Rect2i):
 	for x in range(area.position.x, area.position.x + area.size.x):
 		for y in range(area.position.y, area.position.y + area.size.y):
 			var world_coord = Vector2i(x, y)
-			var terrain_type = terrain_data.get(world_coord, TERRAIN_TYPE_EMPTY)
+			var terrain_type = terrain_data.get(world_coord, Config.TerrainConfig.TYPE_EMPTY)
 			set_tile_at_world_pos(world_coord, terrain_type)
-			if terrain_type != TERRAIN_TYPE_EMPTY:
+			if terrain_type != Config.TerrainConfig.TYPE_EMPTY:
 				tiles_rendered += 1
 	
 	# 调试输出
@@ -1367,10 +1264,10 @@ func render_terrain_in_area(area: Rect2i):
 
 func set_tile_at_world_pos(world_pos: Vector2i, terrain_type: int):
 	"""在世界坐标位置设置对应的地形瓦片"""
-	if terrain_type == TERRAIN_TYPE_EMPTY:
+	if terrain_type == Config.TerrainConfig.TYPE_EMPTY:
 		tile_map_layer.erase_cell(world_pos)
 	else:
-		var tile_id = TERRAIN_TO_TILE_ID.get(terrain_type, 0)
+		var tile_id = Config.TerrainConfig.TERRAIN_TO_TILE_ID.get(terrain_type, 0)
 		# 确保tile_id在有效范围内
 		if tile_id >= 0:
 			tile_map_layer.set_cell(world_pos, 0, Vector2i(0, tile_id))
@@ -1417,14 +1314,14 @@ func forest_noise_at(world_pos: Vector2i) -> float:
 	# 将噪声值从[-1,1]范围映射到[0,1]范围
 	r = (r + 1.0) * 0.5
 	# 应用幂运算增强对比度
-	r = pow(r, FOREST_NOISE_1_POWER)
+	r = pow(r, Config.ForestConfig.NOISE_1_POWER)
 	
 	# 第二层噪声 - 森林密度减少效果
 	var d = forest_noise_2.get_noise_2d(world_pos.x, world_pos.y)
 	# 将噪声值从[-1,1]范围映射到[0,1]范围
 	d = (d + 1.0) * 0.5
 	# 应用幂运算
-	d = pow(d, FOREST_NOISE_2_POWER)
+	d = pow(d, Config.ForestConfig.NOISE_2_POWER)
 	
 	# 返回最终噪声值（基础分布减去密度减少效果）
 	return max(0.0, r - d *  0.5)
@@ -1439,7 +1336,7 @@ func floodplain_noise_at(world_pos: Vector2i) -> float:
 	# 将噪声值从[-1,1]范围映射到[0,1]范围
 	r = (r + 1.0) * 0.5
 	# 应用幂运算增强对比度，使小值更小，大值相对更大
-	r = pow(r, FLOODPLAIN_NOISE_POWER)
+	r = pow(r, Config.SwampConfig.FLOODPLAIN_NOISE_POWER)
 	
 	return r
 
@@ -1449,17 +1346,17 @@ func place_forests(chunk_coord: Vector2i):
 	只在默认地形（田野）上生成森林，根据噪声值决定森林类型
 	"""
 	# 计算区块在世界坐标系中的起始位置
-	var world_start_x = chunk_coord.x * CHUNK_SIZE
-	var world_start_y = chunk_coord.y * CHUNK_SIZE
+	var world_start_x = chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
+	var world_start_y = chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
 	
 	# 默认地形类型（只在此类型上生成森林）
-	var default_terrain_type = TERRAIN_TYPE_LAND
+	var default_terrain_type = Config.TerrainConfig.TYPE_LAND
 	
 	# 遍历区块内所有位置
-	for x in range(CHUNK_SIZE):
-		for y in range(CHUNK_SIZE):
+	for x in range(Config.RenderConfig.CHUNK_SIZE):
+		for y in range(Config.RenderConfig.CHUNK_SIZE):
 			var world_pos = Vector2i(world_start_x + x, world_start_y + y)
-			var current_terrain = terrain_data.get(world_pos, TERRAIN_TYPE_EMPTY)
+			var current_terrain = terrain_data.get(world_pos, Config.TerrainConfig.TYPE_EMPTY)
 			
 			# 只考虑将默认地形转换为森林
 			if current_terrain != default_terrain_type:
@@ -1469,12 +1366,12 @@ func place_forests(chunk_coord: Vector2i):
 			var n = forest_noise_at(world_pos)
 			
 			# 根据噪声值和阈值决定森林类型
-			if n + forest_size_adjust > FOREST_NOISE_THRESHOLD_FOREST_THICK:
+			if n + forest_size_adjust > Config.ForestConfig.NOISE_THRESHOLD_FOREST_THICK:
 				# 生成密林
-				terrain_data[world_pos] = TERRAIN_TYPE_FOREST_THICK
-			elif n + forest_size_adjust > FOREST_NOISE_THRESHOLD_FOREST:
+				terrain_data[world_pos] = Config.TerrainConfig.TYPE_FOREST_THICK
+			elif n + forest_size_adjust > Config.ForestConfig.NOISE_THRESHOLD_FOREST:
 				# 生成普通森林
-				terrain_data[world_pos] = TERRAIN_TYPE_FOREST
+				terrain_data[world_pos] = Config.TerrainConfig.TYPE_FOREST
 
 func place_swamps(chunk_coord: Vector2i):
 	"""
@@ -1488,10 +1385,10 @@ func place_swamps(chunk_coord: Vector2i):
 	3. 早期退出优化
 	"""
 	# 计算区块在世界坐标系中的范围
-	var world_start_x = chunk_coord.x * CHUNK_SIZE
-	var world_start_y = chunk_coord.y * CHUNK_SIZE
-	var world_end_x = world_start_x + CHUNK_SIZE
-	var world_end_y = world_start_y + CHUNK_SIZE
+	var world_start_x = chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
+	var world_start_y = chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
+	var world_end_x = world_start_x + Config.RenderConfig.CHUNK_SIZE
+	var world_end_y = world_start_y + Config.RenderConfig.CHUNK_SIZE
 	
 	# 创建洪泛平原计数数组，记录每个位置被河流缓冲区覆盖的次数
 	# 使用Dictionary来存储稀疏数据，只有被缓冲的位置才会有条目
@@ -1501,26 +1398,26 @@ func place_swamps(chunk_coord: Vector2i):
 	# 目前直接使用优化版本
 	
 	# 步骤1：计算河流洪泛平原缓冲区 - 性能优化版本
-	var check_range = RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX
+	var check_range = Config.SwampConfig.RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX
 	var _river_count = 0  # 统计河流数量用于性能分析
 	
 	# 智能范围计算：根据实际需要的缓冲距离动态调整搜索范围
-	if SWAMP_RIVER_SEARCH_RADIUS_OPTIMIZATION:
-		check_range = RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX
+	if Config.SwampConfig.RIVER_SEARCH_RADIUS_OPTIMIZATION:
+		check_range = Config.SwampConfig.RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX
 	
 	for check_x in range(world_start_x - check_range, world_end_x + check_range):
 		for check_y in range(world_start_y - check_range, world_end_y + check_range):
 			var check_pos = Vector2i(check_x, check_y)
-			var terrain_type = terrain_data.get(check_pos, TERRAIN_TYPE_EMPTY)
+			var terrain_type = terrain_data.get(check_pos, Config.TerrainConfig.TYPE_EMPTY)
 			
 			# 检查是否为河流地形（匹配C++的is_ot_match("river", ot_match_type::contains)）
-			if terrain_type == TERRAIN_TYPE_RIVER:
+			if terrain_type == Config.TerrainConfig.TYPE_RIVER:
 				_river_count += 1
 				
 				# 为该河流点生成随机缓冲区距离
 				var buffer_distance = randi_range(
-					RIVER_FLOODPLAIN_BUFFER_DISTANCE_MIN,
-					RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX
+					Config.SwampConfig.RIVER_FLOODPLAIN_BUFFER_DISTANCE_MIN,
+					Config.SwampConfig.RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX
 				)
 				
 				# 优化：直接生成缓冲区内的点，无需排序
@@ -1531,13 +1428,13 @@ func place_swamps(chunk_coord: Vector2i):
 	var swamp_generated = 0  # 统计生成的沼泽数量
 	var forest_checked = 0   # 统计检查的森林格子数量
 	
-	for x in range(CHUNK_SIZE):
-		for y in range(CHUNK_SIZE):
+	for x in range(Config.RenderConfig.CHUNK_SIZE):
+		for y in range(Config.RenderConfig.CHUNK_SIZE):
 			var world_pos = Vector2i(world_start_x + x, world_start_y + y)
-			var current_terrain = terrain_data.get(world_pos, TERRAIN_TYPE_EMPTY)
+			var current_terrain = terrain_data.get(world_pos, Config.TerrainConfig.TYPE_EMPTY)
 			
 			# 只在森林地形上生成沼泽（匹配C++的is_ot_match("forest", ot_match_type::contains)）
-			if current_terrain != TERRAIN_TYPE_FOREST and current_terrain != TERRAIN_TYPE_FOREST_THICK:
+			if current_terrain != Config.TerrainConfig.TYPE_FOREST and current_terrain != Config.TerrainConfig.TYPE_FOREST_THICK:
 				continue
 			
 			forest_checked += 1
@@ -1555,18 +1452,18 @@ func place_swamps(chunk_coord: Vector2i):
 				var random_roll = randf()
 				
 				should_flood = (random_roll < flood_chance and 
-							   noise_value > NOISE_THRESHOLD_SWAMP_ADJACENT_WATER)
+							   noise_value > Config.SwampConfig.NOISE_THRESHOLD_ADJACENT_WATER)
 			
 			# 检查是否应该生成独立沼泽
-			var should_isolated_swamp = noise_value > NOISE_THRESHOLD_SWAMP_ISOLATED
+			var should_isolated_swamp = noise_value > Config.SwampConfig.NOISE_THRESHOLD_ISOLATED
 			
 			# 如果满足任一条件，生成沼泽
 			if should_flood or should_isolated_swamp:
-				terrain_data[world_pos] = TERRAIN_TYPE_SWAMP
+				terrain_data[world_pos] = Config.TerrainConfig.TYPE_SWAMP
 				swamp_generated += 1
 	
 	# 性能统计输出（调试时可启用）
-	if ENABLE_SWAMP_PERFORMANCE_LOGGING and (_river_count > 10 or swamp_generated > 5):  # 只在有意义的情况下输出
+	if Config.SwampConfig.ENABLE_PERFORMANCE_LOGGING and (_river_count > 10 or swamp_generated > 5):  # 只在有意义的情况下输出
 		print("沼泽生成统计 - 区块 ", chunk_coord, ": 河流数=", _river_count, 
 			  ", 森林检查=", forest_checked, ", 沼泽生成=", swamp_generated)
 
@@ -1700,24 +1597,24 @@ func _draw_tree_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, co
 func get_terrain_type(world_x: int, world_y: int) -> String:
 	"""获取指定世界坐标的地形类型描述"""
 	var world_coord = Vector2i(world_x, world_y)
-	var terrain_type = terrain_data.get(world_coord, TERRAIN_TYPE_EMPTY)
+	var terrain_type = terrain_data.get(world_coord, Config.TerrainConfig.TYPE_EMPTY)
 	
 	match terrain_type:
-		TERRAIN_TYPE_EMPTY:
+		Config.TerrainConfig.TYPE_EMPTY:
 			return "空地"
-		TERRAIN_TYPE_LAND:
+		Config.TerrainConfig.TYPE_LAND:
 			return "田野/草地"
-		TERRAIN_TYPE_RIVER:
+		Config.TerrainConfig.TYPE_RIVER:
 			return "河流"
-		TERRAIN_TYPE_LAKE_SURFACE:
+		Config.TerrainConfig.TYPE_LAKE_SURFACE:
 			return "湖泊表面"
-		TERRAIN_TYPE_LAKE_SHORE:
+		Config.TerrainConfig.TYPE_LAKE_SHORE:
 			return "湖岸"
-		TERRAIN_TYPE_FOREST:
+		Config.TerrainConfig.TYPE_FOREST:
 			return "森林"
-		TERRAIN_TYPE_FOREST_THICK:
+		Config.TerrainConfig.TYPE_FOREST_THICK:
 			return "密林"
-		TERRAIN_TYPE_SWAMP:
+		Config.TerrainConfig.TYPE_SWAMP:
 			return "沼泽"
 		_:
 			return "未知 (%d)" % terrain_type
@@ -1725,11 +1622,11 @@ func get_terrain_type(world_x: int, world_y: int) -> String:
 func get_simple_info() -> String:
 	"""返回简化的玩家位置信息，用于UI显示"""
 	var world_pos = player_ref.global_position if player_ref else Vector2.ZERO
-	var world_grid_x = int(world_pos.x / TILE_SIZE)
-	var world_grid_y = int(world_pos.y / TILE_SIZE)
+	var world_grid_x = int(world_pos.x / Config.RenderConfig.TILE_SIZE)
+	var world_grid_y = int(world_pos.y / Config.RenderConfig.TILE_SIZE)
 	var current_chunk = Vector2i(
-		int(floor(float(world_grid_x) / CHUNK_SIZE)),
-		int(floor(float(world_grid_y) / CHUNK_SIZE))
+		int(floor(float(world_grid_x) / Config.RenderConfig.CHUNK_SIZE)),
+		int(floor(float(world_grid_y) / Config.RenderConfig.CHUNK_SIZE))
 	)
 
 	return "位置: (%d, %d)\n区块: (%d, %d)\n地形: %s\n森林密度: %.3f" % [
@@ -1742,20 +1639,20 @@ func get_simple_info() -> String:
 func get_debug_info() -> String:
 	"""返回详细的调试信息，用于开发时诊断"""
 	var world_pos = player_ref.global_position if player_ref else Vector2.ZERO
-	var world_grid_x = int(world_pos.x / TILE_SIZE)
-	var world_grid_y = int(world_pos.y / TILE_SIZE)
+	var world_grid_x = int(world_pos.x / Config.RenderConfig.TILE_SIZE)
+	var world_grid_y = int(world_pos.y / Config.RenderConfig.TILE_SIZE)
 	var current_chunk = Vector2i(
-		int(floor(float(world_grid_x) / CHUNK_SIZE)),
-		int(floor(float(world_grid_y) / CHUNK_SIZE))
+		int(floor(float(world_grid_x) / Config.RenderConfig.CHUNK_SIZE)),
+		int(floor(float(world_grid_y) / Config.RenderConfig.CHUNK_SIZE))
 	)
-	var local_x = world_grid_x - current_chunk.x * CHUNK_SIZE
-	var local_y = world_grid_y - current_chunk.y * CHUNK_SIZE
+	var local_x = world_grid_x - current_chunk.x * Config.RenderConfig.CHUNK_SIZE
+	var local_y = world_grid_y - current_chunk.y * Config.RenderConfig.CHUNK_SIZE
 	
 	# 检测边界状态
-	var near_left = local_x < BORDER_THRESHOLD
-	var near_right = local_x >= CHUNK_SIZE - BORDER_THRESHOLD
-	var near_top = local_y < BORDER_THRESHOLD
-	var near_bottom = local_y >= CHUNK_SIZE - BORDER_THRESHOLD
+	var near_left = local_x < Config.RenderConfig.BORDER_THRESHOLD
+	var near_right = local_x >= Config.RenderConfig.CHUNK_SIZE - Config.RenderConfig.BORDER_THRESHOLD
+	var near_top = local_y < Config.RenderConfig.BORDER_THRESHOLD
+	var near_bottom = local_y >= Config.RenderConfig.CHUNK_SIZE - Config.RenderConfig.BORDER_THRESHOLD
 	
 	var edge_status = []
 	if near_left: edge_status.append("左")
