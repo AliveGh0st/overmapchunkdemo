@@ -982,7 +982,7 @@ func _connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord
 		
 		# 如果找到河流，建立连接
 		if closest_distance > 0:
-			_place_river_between_points(closest_point, lake_connection_point)
+			_place_river_between_points(closest_point, lake_connection_point, chunk_coord)
 	
 	# 获取湖泊的最北和最南点
 	var north_south_most = _get_north_south_most_points_cpp_style(lake_points)
@@ -1041,10 +1041,10 @@ func _square_dist(p1: Vector2i, p2: Vector2i) -> int:
 # 跨区块河流连接系统
 # ============================================================================
 
-func _place_river_between_points(start_point: Vector2i, end_point: Vector2i):
+func _place_river_between_points(start_point: Vector2i, end_point: Vector2i, chunk_coord: Vector2i):
 	"""
 	在两个世界坐标点之间绘制河流连接
-	用于连接湖泊到最近的河流，可能跨越多个区块
+	用于连接湖泊到最近的河流，但只在当前生成的区块内绘制
 	"""
 	var river_chance = int(max(1.0, 1.0 / Config.RiverConfig.DENSITY_PARAM))
 	var river_scale = int(max(1.0, Config.RiverConfig.DENSITY_PARAM))
@@ -1060,7 +1060,8 @@ func _place_river_between_points(start_point: Vector2i, end_point: Vector2i):
 		for i in range(-1 * river_scale, 1 * river_scale + 1):
 			for j in range(-1 * river_scale, 1 * river_scale + 1):
 				var brush_point = p2 + Vector2i(j, i)
-				if _one_in(river_chance):
+				# 确保只在当前区块内绘制
+				if _is_world_point_in_chunk(brush_point, chunk_coord) and _one_in(river_chance):
 					terrain_data[brush_point] = Config.TerrainConfig.TYPE_RIVER
 		
 		# 第二步：向目标移动（复杂的方向性移动逻辑）
@@ -1093,7 +1094,8 @@ func _place_river_between_points(start_point: Vector2i, end_point: Vector2i):
 				
 				# 如果接近目标或符合概率就放置河流
 				var is_near_target = abs(end_point.y - brush_point.y) < 4 and abs(end_point.x - brush_point.x) < 4
-				if is_near_target or _one_in(river_chance):
+				# 确保只在当前区块内绘制
+				if _is_world_point_in_chunk(brush_point, chunk_coord) and (is_near_target or _one_in(river_chance)):
 					terrain_data[brush_point] = Config.TerrainConfig.TYPE_RIVER
 
 # ============================================================================
