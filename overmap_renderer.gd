@@ -229,11 +229,11 @@ func create_terrain_tileset() -> TileSet:
 	var terrain_colors = [
 		Config.ColorConfig.TERRAIN_COLOR,          # Config.TerrainConfig.TYPE_LAND = 0 (田野)
 		Config.ColorConfig.RIVER_COLOR,            # Config.TerrainConfig.TYPE_RIVER = 1 (河流)
-		Config.ColorConfig.LakeConfig.SURFACE_COLOR,     # Config.TerrainConfig.TYPE_LAKE_SURFACE = 2 (湖泊表面)
-		Config.ColorConfig.LakeConfig.SHORE_COLOR,       # Config.TerrainConfig.TYPE_LAKE_SHORE = 3 (湖岸)
-		Config.ColorConfig.ForestConfig.COLOR,           # Config.TerrainConfig.TYPE_FOREST = 4 (森林)
-		Config.ColorConfig.ForestConfig.THICK_COLOR,     # Config.TerrainConfig.TYPE_FOREST_THICK = 5 (密林)
-		Config.ColorConfig.SwampConfig.COLOR             # Config.TerrainConfig.TYPE_SWAMP = 6 (沼泽)
+		Config.ColorConfig.LAKE_SURFACE_COLOR,     # Config.TerrainConfig.TYPE_LAKE_SURFACE = 2 (湖泊表面)
+		Config.ColorConfig.LAKE_SHORE_COLOR,       # Config.TerrainConfig.TYPE_LAKE_SHORE = 3 (湖岸)
+		Config.ColorConfig.FOREST_COLOR,           # Config.TerrainConfig.TYPE_FOREST = 4 (森林)
+		Config.ColorConfig.FOREST_THICK_COLOR,     # Config.TerrainConfig.TYPE_FOREST_THICK = 5 (密林)
+		Config.ColorConfig.SWAMP_COLOR             # Config.TerrainConfig.TYPE_SWAMP = 6 (沼泽)
 	]
 	
 	# 创建纹理图集，每个瓦片Config.RenderConfig.TILE_SIZE×Config.RenderConfig.TILE_SIZE像素
