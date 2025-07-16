@@ -956,8 +956,8 @@ func _connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord
 		print("Lake already contains rivers, skipping connection logic")
 		return
 	
-	# 连接湖泊点到最近河流的函数
-	var connect_lake_to_closest_river = func(lake_connection_point: Vector2i):
+	# 连接湖泊点到符合条件河流的函数
+	var connect_lake_to_qualified_river = func(lake_connection_point: Vector2i, is_northmost: bool):
 		var closest_distance = -1
 		var closest_point = Vector2i.ZERO
 		
@@ -974,13 +974,25 @@ func _connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord
 					if terrain_type != Config.TerrainConfig.TYPE_RIVER:
 						continue
 					
+					# 检查河流位置是否符合连接条件
+					var river_qualifies = false
+					if is_northmost:
+						# 最北点只连接到高于该点的河流（y值更小）
+						river_qualifies = (p.y < lake_connection_point.y)
+					else:
+						# 最南点只连接到低于该点的河流（y值更大）
+						river_qualifies = (p.y > lake_connection_point.y)
+					
+					if not river_qualifies:
+						continue
+					
 					# 计算距离
 					var distance = _square_dist(lake_connection_point, p)
 					if distance < closest_distance or closest_distance < 0:
 						closest_point = p
 						closest_distance = distance
 		
-		# 如果找到河流，建立连接
+		# 如果找到符合条件的河流，建立连接
 		if closest_distance > 0:
 			_place_river_between_points(closest_point, lake_connection_point, chunk_coord)
 	
@@ -989,12 +1001,12 @@ func _connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord
 	var northmost = north_south_most[0]
 	var southmost = north_south_most[1]
 	
-	# 连接最北和最南点到河流
+	# 连接最北和最南点到符合条件的河流
 	if _is_world_point_in_chunk(northmost, chunk_coord):
-		connect_lake_to_closest_river.call(northmost)
+		connect_lake_to_qualified_river.call(northmost, true)  # true表示这是最北点
 	
 	if _is_world_point_in_chunk(southmost, chunk_coord):
-		connect_lake_to_closest_river.call(southmost)
+		connect_lake_to_qualified_river.call(southmost, false)  # false表示这是最南点
 
 func _get_north_south_most_points_cpp_style(lake_points: Array[Vector2i]) -> Array[Vector2i]:
 	"""找到湖泊点集合中Y坐标最小（最北）和最大（最南）的点"""
@@ -1251,18 +1263,11 @@ func clear_tiles_outside_area(new_area: Rect2i):
 
 func render_terrain_in_area(area: Rect2i):
 	"""在指定区域渲染地形瓦片"""
-	var tiles_rendered = 0
 	for x in range(area.position.x, area.position.x + area.size.x):
 		for y in range(area.position.y, area.position.y + area.size.y):
 			var world_coord = Vector2i(x, y)
 			var terrain_type = terrain_data.get(world_coord, Config.TerrainConfig.TYPE_EMPTY)
 			set_tile_at_world_pos(world_coord, terrain_type)
-			if terrain_type != Config.TerrainConfig.TYPE_EMPTY:
-				tiles_rendered += 1
-	
-	# 调试输出
-	if tiles_rendered > 0:
-		print("Rendered %d tiles in area: %s" % [tiles_rendered, area])
 
 func set_tile_at_world_pos(world_pos: Vector2i, terrain_type: int):
 	"""在世界坐标位置设置对应的地形瓦片"""
@@ -1282,29 +1287,29 @@ func update_player_marker(world_x: int, world_y: int):
 	var new_player_pos = Vector2i(world_x, world_y)
 	
 	# 调试输出
-	print("Player marker at: ", new_player_pos, " visible: ", player_visible)
+	# print("Player marker at: ", new_player_pos, " visible: ", player_visible)
 	
 	# 如果位置没有变化，只需要处理闪烁效果
 	if new_player_pos == player_marker_tile_pos:
 		if player_visible:
 			player_tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 0))  # 显示玩家标记
-			print("Set player tile visible at: ", player_marker_tile_pos)
+			# print("Set player tile visible at: ", player_marker_tile_pos)
 		else:
 			# 清除玩家标记瓦片（闪烁效果）
 			player_tile_map_layer.erase_cell(player_marker_tile_pos)
-			print("Cleared player tile at: ", player_marker_tile_pos)
+			# print("Cleared player tile at: ", player_marker_tile_pos)
 		return
 	
 	# 清除旧位置的玩家标记
 	if player_marker_tile_pos != Vector2i(-999999, -999999):
 		player_tile_map_layer.erase_cell(player_marker_tile_pos)
-		print("Cleared old player position: ", player_marker_tile_pos)
+		# print("Cleared old player position: ", player_marker_tile_pos)
 	
 	# 设置新位置
 	player_marker_tile_pos = new_player_pos
 	if player_visible:
 		player_tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 0))  # 设置玩家标记
-		print("Set new player position: ", player_marker_tile_pos)
+		# print("Set new player position: ", player_marker_tile_pos)
 
 func forest_noise_at(world_pos: Vector2i) -> float:
 	"""

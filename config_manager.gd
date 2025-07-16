@@ -46,7 +46,7 @@ class ColorConfig:
 	## 基于CDDA终端风格的颜色配置
 	const TERRAIN_COLOR: Color = Color.YELLOW
 	const PLAYER_COLOR: Color = Color.RED
-	const RIVER_COLOR: Color = Color.BLUE
+	const RIVER_COLOR: Color = Color.SKY_BLUE
 	const LAKE_SURFACE_COLOR: Color = Color.BLUE
 	const LAKE_SHORE_COLOR: Color = Color.DARK_GRAY
 	const FOREST_COLOR: Color = Color.DARK_GREEN

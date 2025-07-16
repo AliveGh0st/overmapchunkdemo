@@ -21,7 +21,6 @@ Config="*res://config_manager.gd"
 
 [debug]
 
-settings/stdout/print_fps=true
 file_logging/enable_file_logging=true
 gdscript/warnings/empty_file=0
 
