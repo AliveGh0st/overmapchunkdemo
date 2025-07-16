@@ -30,6 +30,26 @@ var terrain_data: Dictionary = {}  ## 地形数据存储，键为世界坐标Vec
 var generated_chunks: Dictionary = {}  ## 已生成区块记录，键为区块坐标Vector2i
 
 # ============================================================================
+# 城市系统数据结构
+# ============================================================================
+## 城市数据类
+class City:
+	var pos: Vector2i          ## 城市中心位置（世界坐标）
+	var pos_om: Vector2i       ## 城市所在区块坐标
+	var size: int              ## 城市大小
+
+	func _init(position: Vector2i = Vector2i.ZERO, overmap_pos: Vector2i = Vector2i.ZERO, city_size: int = 0):
+		pos = position
+		pos_om = overmap_pos 
+		size = city_size
+
+## 城市生成系统状态
+var cities: Array[City] = []              ## 当前区域的城市列表
+var city_tiles: Dictionary = {}           ## 城市瓦片坐标集合，键为Vector2i，值为bool
+var urbanity: int = 0                     ## 城市化程度参数
+var forestosity: float = 0.0              ## 森林密度值（用于城市大小调整计算）
+
+# ============================================================================
 # 玩家闪烁效果控制
 # ============================================================================
 var player_blink_timer: float = 0.0  ## 闪烁计时器
@@ -52,7 +72,7 @@ var lake_noise: FastNoiseLite  ## 湖泊生成噪声器
 
 # 动态森林大小调整值（替代原来的常量）
 var forest_size_adjust: float = 0.0 ## 森林大小调整值，对应C++的forest_size_adjust
-var forestosity: float = 0.0 ## 森林密度值，对应C++的forestosity
+# 注意：forestosity在城市系统部分已声明
 
 # 森林噪声生成器实例
 var forest_noise_1: FastNoiseLite ## 第一层噪声生成器 - 森林基础分布
@@ -233,7 +253,9 @@ func create_terrain_tileset() -> TileSet:
 		Config.ColorConfig.LAKE_SHORE_COLOR,       # Config.TerrainConfig.TYPE_LAKE_SHORE = 3 (湖岸)
 		Config.ColorConfig.FOREST_COLOR,           # Config.TerrainConfig.TYPE_FOREST = 4 (森林)
 		Config.ColorConfig.FOREST_THICK_COLOR,     # Config.TerrainConfig.TYPE_FOREST_THICK = 5 (密林)
-		Config.ColorConfig.SWAMP_COLOR             # Config.TerrainConfig.TYPE_SWAMP = 6 (沼泽)
+		Config.ColorConfig.SWAMP_COLOR,            # Config.TerrainConfig.TYPE_SWAMP = 6 (沼泽)
+		Config.ColorConfig.ROAD_COLOR,             # Config.TerrainConfig.TYPE_ROAD = 7 (道路)
+		Config.ColorConfig.CITY_COLOR              # Config.TerrainConfig.TYPE_CITY_TILE = 8 (城市)
 	]
 	
 	# 创建纹理图集，每个瓦片Config.RenderConfig.TILE_SIZE×Config.RenderConfig.TILE_SIZE像素
@@ -289,6 +311,14 @@ func create_terrain_tileset() -> TileSet:
 		# 为沼泽绘制特殊的水草混合图案
 		elif i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_SWAMP]:
 			_draw_swamp_shape(atlas_image, start_y, tile_pixel_size, color)
+		
+		# 为道路绘制特殊的十字路口图案
+		elif i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_ROAD]:
+			_draw_road_shape(atlas_image, start_y, tile_pixel_size, color)
+		
+		# 为城市绘制建筑图案
+		elif i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_CITY_TILE]:
+			_draw_city_shape(atlas_image, start_y, tile_pixel_size, color)
 		
 		else:
 			# 其他地形类型绘制圆形图案
@@ -537,6 +567,9 @@ func generate_chunk_at(chunk_coord: Vector2i):
 
 	# 4. 生成洪范平原沼泽（在森林生成后，基于河流生成洪泛平原）
 	place_swamps(chunk_coord)
+
+	# 5. 生成城市（在所有自然地形生成完成后）
+	place_cities(chunk_coord)
 
 # ============================================================================
 # 河流生成系统（完全匹配C++逻辑）
@@ -1623,6 +1656,10 @@ func get_terrain_type(world_x: int, world_y: int) -> String:
 			return "密林"
 		Config.TerrainConfig.TYPE_SWAMP:
 			return "沼泽"
+		Config.TerrainConfig.TYPE_ROAD:
+			return "道路"
+		Config.TerrainConfig.TYPE_CITY_TILE:
+			return "城市建筑"
 		_:
 			return "未知 (%d)" % terrain_type
 
@@ -1636,9 +1673,9 @@ func get_simple_info() -> String:
 		int(floor(float(world_grid_y) / Config.RenderConfig.CHUNK_SIZE))
 	)
 
-	return "位置: (%d, %d)\n区块: (%d, %d)\n地形: %s\n森林密度: %.3f" % [
+	return "位置: (%d, %d)\n区块: (%d, %d)\n地形: %s\n森林密度: %.3f\n城市数量: %d" % [
 		world_grid_x, world_grid_y, current_chunk.x, current_chunk.y, 
-		get_terrain_type(world_grid_x, world_grid_y), forest_size_adjust
+		get_terrain_type(world_grid_x, world_grid_y), forest_size_adjust, cities.size()
 	]
 
 
@@ -1777,3 +1814,288 @@ func _add_flood_buffer_fast(center: Vector2i, radius: int, floodplain: Dictionar
 			if distance_sq <= radius_sq:
 				var point = Vector2i(x, y)
 				floodplain[point] = floodplain.get(point, 0) + 1
+
+# ============================================================================
+# 城市生成系统（完全匹配C++逻辑）
+# ============================================================================
+
+func place_cities(chunk_coord: Vector2i):
+	"""
+	城市生成主函数，完全仿照C++版本的overmap::place_cities()函数
+	处理城市间距、大小调整和城市街道网络生成
+	"""
+	var op_city_spacing = Config.CityConfig.CITY_SPACING
+	var op_city_size = Config.CityConfig.CITY_SIZE  
+	var max_urbanity = Config.CityConfig.OVERMAP_MAXIMUM_URBANITY
+	
+	if op_city_size <= 0:
+		return
+	
+	# 确保城市大小调整永远不会使op_city_size降到2以下
+	var city_size_adjust = min(urbanity - int(forestosity / 2.0), -1 * op_city_size + 2)
+	var city_space_adjust = urbanity >> 1  # 位移操作代替除法2
+	var max_city_size = min(op_city_size + city_size_adjust, op_city_size * max_urbanity)
+	
+	if max_city_size < op_city_size:
+		# 如果max_city_size小于op_city_size会产生奇怪的结果
+		max_city_size = op_city_size
+	
+	if op_city_spacing > 0:
+		city_space_adjust = min(city_space_adjust, op_city_spacing - 2)
+		op_city_spacing = op_city_spacing - city_space_adjust + int(forestosity)
+	
+	# 确保间距不会过于极端
+	op_city_spacing = min(op_city_spacing, 10)
+	
+	# 计算城市覆盖参数
+	var omts_per_overmap = Config.RenderConfig.CHUNK_SIZE * Config.RenderConfig.CHUNK_SIZE
+	var city_map_coverage_ratio = 1.0 / pow(2.0, op_city_spacing)
+	var omts_per_city = (op_city_size * 2 + 1) * (max_city_size * 2 + 1) * 3 / 4.0
+	
+	# 计算当前区块应该有多少城市
+	var num_cities_on_this_overmap = 0
+	var cities_to_place: Array[City] = []
+	
+	# 检查是否已有预定义城市（模拟C++的city::get_all()）
+	for c in cities:
+		if c.pos_om == chunk_coord:
+			num_cities_on_this_overmap += 1
+			cities_to_place.append(c)
+	
+	var use_random_cities = cities.is_empty()
+	
+	# 如果没有预定义城市，随机生成城市数量
+	if use_random_cities:
+		num_cities_on_this_overmap = _roll_remainder(omts_per_overmap * city_map_coverage_ratio / omts_per_city)
+	
+	var MAX_PLACEMENT_ATTEMPTS = Config.CityConfig.MAX_PLACEMENT_ATTEMPTS
+	var placement_attempts = 0
+	
+	# 为num_cities_on_this_overmap个城市放置种子点
+	while cities.size() < num_cities_on_this_overmap and placement_attempts < MAX_PLACEMENT_ATTEMPTS:
+		placement_attempts += 1
+		
+		var p_local: Vector2i
+		var tmp = City.new()
+		tmp.pos_om = chunk_coord
+		
+		if use_random_cities:
+			# 随机创建城市大小
+			var size = randi_range(op_city_size - 1, max_city_size)
+			if _one_in(Config.CityConfig.TINY_CITY_CHANCE):  # 33% 微小城市
+				size = int(size * Config.CityConfig.TINY_SIZE_MULTIPLIER)
+			elif _one_in(Config.CityConfig.SMALL_CITY_CHANCE):  # 33% 小城市
+				size = int(size * Config.CityConfig.SMALL_SIZE_MULTIPLIER)
+			elif _one_in(Config.CityConfig.LARGE_CITY_CHANCE):  # 17% 大城市
+				size = int(size * Config.CityConfig.LARGE_SIZE_MULTIPLIER)
+			else:  # 17% 超大城市
+				size = int(size * Config.CityConfig.HUGE_SIZE_MULTIPLIER)
+			
+			# 确保城市至少为大小2
+			size = max(size, Config.CityConfig.MIN_CITY_SIZE)
+			size = min(size, Config.CityConfig.MAX_CITY_SIZE)
+			
+			# 不要在地图边缘绘制城市，它们会被裁剪
+			var c_local = Vector2i(
+				randi_range(size - 1, Config.RenderConfig.CHUNK_SIZE - size), 
+				randi_range(size - 1, Config.RenderConfig.CHUNK_SIZE - size)
+			)
+			p_local = c_local
+			var p_world = _local_to_world(p_local, chunk_coord)
+			
+			if terrain_data.get(p_world, Config.TerrainConfig.TYPE_EMPTY) == Config.TerrainConfig.TYPE_LAND:
+				placement_attempts = 0
+				terrain_data[p_world] = Config.TerrainConfig.TYPE_ROAD  # 每个城市都从十字路口开始
+				city_tiles[c_local] = true
+				tmp.pos = p_local
+				tmp.size = size
+		else:
+			placement_attempts = 0
+			tmp = _random_entry(cities_to_place)
+			p_local = tmp.pos
+			var p_world = _local_to_world(p_local, chunk_coord)
+			terrain_data[p_world] = Config.TerrainConfig.TYPE_ROAD
+			city_tiles[tmp.pos] = true
+		
+		if placement_attempts == 0:
+			cities.append(tmp)
+			var start_dir = _random_direction()
+			var cur_dir = start_dir
+			
+			# 追踪已放置的城市独特建筑
+			var placed_unique_buildings: Dictionary = {}
+			
+			# 在4个方向上建造城市街道
+			while true:
+				_build_city_street(tmp.pos, tmp.size, cur_dir, tmp, placed_unique_buildings, chunk_coord)
+				cur_dir = _turn_right(cur_dir)
+				if cur_dir == start_dir:
+					break
+	
+	# 执行城市瓦片洪水填充
+	_flood_fill_city_tiles(chunk_coord)
+
+func _build_city_street(city_center: Vector2i, city_size: int, direction: int, _city: City, 
+						_placed_unique_buildings: Dictionary, chunk_coord: Vector2i):
+	"""
+	在指定方向上建造城市街道和建筑
+	模拟C++版本的build_city_street函数逻辑
+	"""
+	var road_points: Array[Vector2i] = []
+	
+	# 获取方向向量
+	var dir_vec = _direction_to_vector(direction)
+	
+	# 从城市中心开始，向指定方向延伸街道
+	for i in range(1, city_size + 1):
+		var road_pos = city_center + dir_vec * i
+		
+		# 检查是否在区块边界内
+		if _is_inbounds_local(road_pos):
+			road_points.append(road_pos)
+			var world_pos = _local_to_world(road_pos, chunk_coord)
+			terrain_data[world_pos] = Config.TerrainConfig.TYPE_ROAD
+			city_tiles[road_pos] = true
+	
+	# 在街道两侧建造建筑
+	for road_pos in road_points:
+		_place_city_buildings_around_road(road_pos, direction, _placed_unique_buildings, chunk_coord)
+
+func _place_city_buildings_around_road(road_pos: Vector2i, road_direction: int, 
+									   _placed_unique_buildings: Dictionary, chunk_coord: Vector2i):
+	"""
+	在道路周围放置城市建筑
+	"""
+	var perpendicular_dirs = _get_perpendicular_directions(road_direction)
+	
+	for perp_dir in perpendicular_dirs:
+		var building_pos = road_pos + _direction_to_vector(perp_dir)
+		
+		if _is_inbounds_local(building_pos, 1):  # 留1格边界
+			var world_pos = _local_to_world(building_pos, chunk_coord)
+			# 只在空地上建造建筑
+			if terrain_data.get(world_pos, Config.TerrainConfig.TYPE_EMPTY) == Config.TerrainConfig.TYPE_LAND:
+				terrain_data[world_pos] = Config.TerrainConfig.TYPE_CITY_TILE
+				city_tiles[building_pos] = true
+
+func _flood_fill_city_tiles(_chunk_coord: Vector2i):
+	"""
+	城市瓦片洪水填充，完全仿照C++版本的flood_fill_city_tiles()函数
+	寻找被城市瓦片包围的区域并将其标记为城市的一部分
+	"""
+	var visited: Dictionary = {}
+	
+	# 计算区块边界
+	var chunk_bounds = Rect2i(Vector2i(0, 0), Vector2i(Config.RenderConfig.CHUNK_SIZE, Config.RenderConfig.CHUNK_SIZE))
+	
+	# 遍历区块内的每个点
+	for y in range(Config.RenderConfig.CHUNK_SIZE):
+		for x in range(Config.RenderConfig.CHUNK_SIZE):
+			var checked = Vector2i(x, y)
+			
+			# 如果已经在之前的洪水填充中查看过，忽略它
+			if visited.has(checked):
+				continue
+			
+			# 检查连接到此点的区域是否被city_tiles包围
+			var enclosed = [true]  # 使用数组来解决闭包捕获问题
+			
+			# 洪水填充的谓词，同时检测是否有点洪水填充到了区块边缘
+			var is_unchecked = func(pt: Vector2i) -> bool:
+				if city_tiles.has(pt):
+					return false
+				
+				# 我们碰到了区块边缘！我们自由了！
+				if not chunk_bounds.has_point(pt):
+					enclosed[0] = false
+					return false
+				
+				return true
+			
+			# 连接到此点且不属于城市的所有点
+			var area = _point_flood_fill_4_connected(checked, visited, is_unchecked)
+			if not enclosed[0]:
+				continue
+			
+			# 它们被包围了，所以应该被视为城市的一部分
+			for pt in area:
+				city_tiles[pt] = true
+
+# ============================================================================
+# 城市生成辅助函数
+# ============================================================================
+
+func _roll_remainder(value: float) -> int:
+	"""
+	对浮点数进行概率性向上取整
+	模拟C++版本的roll_remainder函数
+	"""
+	var base = int(value)
+	var remainder = value - base
+	if randf() < remainder:
+		return base + 1
+	return base
+
+func _random_direction() -> int:
+	"""返回随机方向（0-3）"""
+	return randi() % 4
+
+func _turn_right(direction: int) -> int:
+	"""向右转90度"""
+	return (direction + 1) % 4
+
+func _direction_to_vector(direction: int) -> Vector2i:
+	"""将方向转换为向量"""
+	match direction:
+		0: return Vector2i(0, -1)  # 北
+		1: return Vector2i(1, 0)   # 东
+		2: return Vector2i(0, 1)   # 南
+		3: return Vector2i(-1, 0)  # 西
+		_: return Vector2i.ZERO
+
+func _get_perpendicular_directions(direction: int) -> Array[int]:
+	"""获取垂直方向"""
+	match direction:
+		0, 2: return [1, 3]  # 北/南 -> 东/西
+		1, 3: return [0, 2]  # 东/西 -> 北/南
+		_: return [0, 1, 2, 3]
+
+func _draw_road_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, color: Color):
+	"""
+	绘制道路（十字路口）图案到纹理图集
+	绘制水平和垂直线条形成十字形
+	"""
+	var center_x = int(float(tile_pixel_size) / 2.0)
+	var center_y = int(float(tile_pixel_size) / 2.0)
+	var road_width = max(2, int(float(tile_pixel_size) / 8.0))  # 道路宽度，先转浮点数再除法
+	
+	# 绘制水平道路
+	for x in range(tile_pixel_size):
+		for y in range(center_y - road_width / 2, center_y + road_width / 2 + 1):
+			if y >= 0 and y < tile_pixel_size:
+				atlas_image.set_pixel(x, start_y + y, color)
+	
+	# 绘制垂直道路
+	for y in range(tile_pixel_size):
+		for x in range(center_x - road_width / 2, center_x + road_width / 2 + 1):
+			if x >= 0 and x < tile_pixel_size:
+				atlas_image.set_pixel(x, start_y + y, color)
+
+func _draw_city_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, color: Color):
+	"""
+	绘制城市建筑图案到纹理图集
+	绘制简单的方形建筑轮廓
+	"""
+	var building_size = int(tile_pixel_size * 0.8)  # 建筑大小
+	var offset = int(float(tile_pixel_size - building_size) / 2.0)  # 偏移量，先转浮点数
+	
+	# 绘制建筑轮廓
+	for x in range(offset, offset + building_size):
+		for y in range(offset, offset + building_size):
+			if x >= 0 and x < tile_pixel_size and y >= 0 and y < tile_pixel_size:
+				# 只绘制边框
+				if x == offset or x == offset + building_size - 1 or y == offset or y == offset + building_size - 1:
+					atlas_image.set_pixel(x, start_y + y, color)
+				# 或者填充整个建筑（可选）
+				else:
+					atlas_image.set_pixel(x, start_y + y, Color(color.r * 0.7, color.g * 0.7, color.b * 0.7, color.a))

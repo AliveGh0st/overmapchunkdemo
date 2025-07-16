@@ -26,6 +26,8 @@ class TerrainConfig:
 	const TYPE_FOREST: int = 5
 	const TYPE_FOREST_THICK: int = 6
 	const TYPE_SWAMP: int = 7
+	const TYPE_ROAD: int = 8           ## 道路地形
+	const TYPE_CITY_TILE: int = 9      ## 城市瓦片地形
 	
 	## 地形类型到TileSet瓦片ID的映射
 	const TERRAIN_TO_TILE_ID: Dictionary = {
@@ -36,7 +38,9 @@ class TerrainConfig:
 		TYPE_LAKE_SHORE: 3,
 		TYPE_FOREST: 4,
 		TYPE_FOREST_THICK: 5,
-		TYPE_SWAMP: 6
+		TYPE_SWAMP: 6,
+		TYPE_ROAD: 7,
+		TYPE_CITY_TILE: 8
 	}
 
 # ============================================================================
@@ -52,6 +56,8 @@ class ColorConfig:
 	const FOREST_COLOR: Color = Color.DARK_GREEN
 	const FOREST_THICK_COLOR: Color = Color.FOREST_GREEN
 	const SWAMP_COLOR: Color = Color(0.4, 0.6, 0.3, 1.0)
+	const ROAD_COLOR: Color = Color.GRAY       ## 道路颜色
+	const CITY_COLOR: Color = Color.WHITE      ## 城市建筑颜色
 
 # ============================================================================
 # 玩家配置
@@ -139,6 +145,32 @@ class SwampConfig:
 	const FLOODPLAIN_NOISE_POWER: float = 2.0      ## 幂运算系数
 
 # ============================================================================
+# 城市生成配置
+# ============================================================================
+class CityConfig:
+	## 城市间距和大小参数（对应C++中的配置选项）
+	const CITY_SPACING: int = 4              ## 城市间距配置值
+	const CITY_SIZE: int = 8                 ## 基础城市大小
+	const OVERMAP_MAXIMUM_URBANITY: int = 5  ## 最大城市化程度乘数
+	
+	## 城市生成约束
+	const MAX_PLACEMENT_ATTEMPTS: int = 50   ## 最大放置尝试次数
+	const MIN_CITY_SIZE: int = 2             ## 最小城市大小
+	const MAX_CITY_SIZE: int = 55            ## 最大城市大小
+	
+	## 城市生成概率参数
+	const TINY_CITY_CHANCE: int = 3          ## 生成微小城市的概率 (1/3)
+	const SMALL_CITY_CHANCE: int = 2         ## 生成小城市的概率 (1/2)
+	const LARGE_CITY_CHANCE: int = 2         ## 生成大城市的概率 (1/2)
+	# 其余为大型城市 (17%)
+	
+	## 城市大小调整系数
+	const TINY_SIZE_MULTIPLIER: float = 1.0 / 3.0     ## 微小城市大小倍数
+	const SMALL_SIZE_MULTIPLIER: float = 2.0 / 3.0    ## 小城市大小倍数
+	const LARGE_SIZE_MULTIPLIER: float = 3.0 / 2.0    ## 大城市大小倍数
+	const HUGE_SIZE_MULTIPLIER: float = 2.0           ## 超大城市大小倍数
+
+# ============================================================================
 # 性能优化配置
 # ============================================================================
 class PerformanceConfig:
@@ -158,6 +190,7 @@ var river: RiverConfig = RiverConfig.new()
 var lake: LakeConfig = LakeConfig.new()
 var forest: ForestConfig = ForestConfig.new()
 var swamp: SwampConfig = SwampConfig.new()
+var city: CityConfig = CityConfig.new()
 var performance: PerformanceConfig = PerformanceConfig.new()
 
 # ============================================================================
@@ -270,6 +303,8 @@ func get_terrain_color(terrain_type: int) -> Color:
 		TerrainConfig.TYPE_FOREST: return ColorConfig.FOREST_COLOR
 		TerrainConfig.TYPE_FOREST_THICK: return ColorConfig.FOREST_THICK_COLOR
 		TerrainConfig.TYPE_SWAMP: return ColorConfig.SWAMP_COLOR
+		TerrainConfig.TYPE_ROAD: return ColorConfig.ROAD_COLOR
+		TerrainConfig.TYPE_CITY_TILE: return ColorConfig.CITY_COLOR
 		_: return Color.WHITE
 
 ## 获取地形类型对应的瓦片ID
