@@ -50,7 +50,7 @@ class ColorConfig:
 	## 基于CDDA终端风格的颜色配置
 	const TERRAIN_COLOR: Color = Color.YELLOW
 	const PLAYER_COLOR: Color = Color.RED
-	const RIVER_COLOR: Color = Color.SKY_BLUE
+	const RIVER_COLOR: Color = Color.BLUE
 	const LAKE_SURFACE_COLOR: Color = Color.BLUE
 	const LAKE_SHORE_COLOR: Color = Color.DARK_GRAY
 	const FOREST_COLOR: Color = Color.DARK_GREEN
@@ -149,14 +149,21 @@ class SwampConfig:
 # ============================================================================
 class CityConfig:
 	## 城市间距和大小参数（对应C++中的配置选项）
-	const CITY_SPACING: int = 4              ## 城市间距配置值
-	const CITY_SIZE: int = 8                 ## 基础城市大小
-	const OVERMAP_MAXIMUM_URBANITY: int = 5  ## 最大城市化程度乘数
+	const CITY_SPACING: int = 4               ## 城市间距配置值（降低以增加城市数量）
+	const CITY_SIZE: int = 16                 ## 基础城市大小
+	const OVERMAP_MAXIMUM_URBANITY: int = 8  ## 最大城市化程度乘数
+	
+	## 城市化程度增长参数（对应C++的城市化方向增长）
+	const URBAN_INCREASE_NORTH: int = 0      ## 北方向城市化增长值
+	const URBAN_INCREASE_EAST: int = 10       ## 东方向城市化增长值
+	const URBAN_INCREASE_WEST: int = 0       ## 西方向城市化增长值
+	const URBAN_INCREASE_SOUTH: int = 5      ## 南方向城市化增长值
 	
 	## 城市生成约束
 	const MAX_PLACEMENT_ATTEMPTS: int = 50   ## 最大放置尝试次数
 	const MIN_CITY_SIZE: int = 2             ## 最小城市大小
 	const MAX_CITY_SIZE: int = 55            ## 最大城市大小
+	const BUILDING_CHANCE: int = 4           ## 建筑生成概率 (1/4 = 25%)
 	
 	## 城市生成概率参数
 	const TINY_CITY_CHANCE: int = 3          ## 生成微小城市的概率 (1/3)
@@ -169,6 +176,32 @@ class CityConfig:
 	const SMALL_SIZE_MULTIPLIER: float = 2.0 / 3.0    ## 小城市大小倍数
 	const LARGE_SIZE_MULTIPLIER: float = 3.0 / 2.0    ## 大城市大小倍数
 	const HUGE_SIZE_MULTIPLIER: float = 2.0           ## 超大城市大小倍数
+	
+	## 商店和公园分布参数（对应C++的city_settings）
+	const SHOP_RADIUS: int = 30               ## 商店分布半径（增大以覆盖更多区域）
+	const PARK_RADIUS: int = 20               ## 公园分布半径（增大以覆盖更多区域）
+	const SHOP_SIGMA: int = 50                ## 商店分布标准差（合理的变化范围）
+	const PARK_SIGMA: int = 80                ## 公园分布标准差（合理的变化范围）
+	
+	## 建筑类型定义
+	static func get_building_types() -> Dictionary:
+		return {
+			"houses": [
+				{"id": "house_small", "size": Vector2i(1, 1), "city_unique": false, "globally_unique": false},
+				{"id": "house_medium", "size": Vector2i(2, 2), "city_unique": false, "globally_unique": false},
+				{"id": "house_large", "size": Vector2i(3, 3), "city_unique": false, "globally_unique": false}
+			],
+			"shops": [
+				{"id": "shop_general", "size": Vector2i(2, 2), "city_unique": false, "globally_unique": false},
+				{"id": "shop_supermarket", "size": Vector2i(3, 3), "city_unique": true, "globally_unique": false},
+				{"id": "shop_mall", "size": Vector2i(5, 5), "city_unique": true, "globally_unique": true}
+			],
+			"parks": [
+				{"id": "park_small", "size": Vector2i(2, 2), "city_unique": false, "globally_unique": false},
+				{"id": "park_medium", "size": Vector2i(3, 3), "city_unique": false, "globally_unique": false},
+				{"id": "park_large", "size": Vector2i(4, 4), "city_unique": true, "globally_unique": false}
+			]
+		}
 
 # ============================================================================
 # 性能优化配置

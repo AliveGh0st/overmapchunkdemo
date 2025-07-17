@@ -60,3 +60,20 @@ theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 14
 text = "Debug Info"
 vertical_alignment = 2
+
+[node name="BuildingInfoLabel" type="Label" parent="UILayer/UI"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -350.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 200.0
+grow_horizontal = 0
+theme_override_colors/font_color = Color(0, 1, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "建筑信息
+鼠标悬停显示建筑类型
+右键点击查看详细信息"
+vertical_alignment = 1

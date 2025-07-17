@@ -49,6 +49,11 @@ var city_tiles: Dictionary = {}           ## 城市瓦片坐标集合，键为Ve
 var urbanity: int = 0                     ## 城市化程度参数
 var forestosity: float = 0.0              ## 森林密度值（用于城市大小调整计算）
 
+## 特殊建筑跟踪系统
+var globally_unique_buildings: Dictionary = {}  ## 全局独特建筑记录，键为建筑ID字符串
+var placed_unique_buildings: Dictionary = {}    ## 已放置独特建筑记录（当前城市范围）
+var overmap_special_placements: Dictionary = {} ## 特殊建筑放置记录，键为世界坐标Vector2i
+
 # ============================================================================
 # 玩家闪烁效果控制
 # ============================================================================
@@ -554,6 +559,9 @@ func generate_chunk_at(chunk_coord: Vector2i):
 
 	# 1. 计算当前区块的森林密度（在生成森林之前）
 	calculate_forestosity(chunk_coord)
+
+	# 1.5. 计算当前区块的城市化程度（在生成城市之前）
+	calculate_urbanity(chunk_coord)
 
 	# 2. 生成河流（避开将来的湖泊位置）
 	if Config.RiverConfig.DENSITY_PARAM > 0.0:
@@ -1189,7 +1197,73 @@ func calculate_forestosity(chunk_coord: Vector2i):
 	
 	# 调试输出（对应C++的debugmsg，可以根据需要启用）
 	# print("forestosity = %.2f at OM %d, %d" % [forestosity, this_om_x, this_om_y])
+
+func calculate_urbanity(chunk_coord: Vector2i):
+	"""
+	计算当前区块的城市化程度调整值
+	完全匹配C++版本的overmap::calculate_urbanity()函数
+	根据区块在世界中的位置和4个方向的城市化增长率参数来动态调整城市大小和密度
+	"""
+	var op_city_size = Config.CityConfig.CITY_SIZE
+	if op_city_size <= 0:
+		return
 	
+	var northern_urban_increase = Config.CityConfig.URBAN_INCREASE_NORTH
+	var eastern_urban_increase = Config.CityConfig.URBAN_INCREASE_EAST
+	var western_urban_increase = Config.CityConfig.URBAN_INCREASE_WEST
+	var southern_urban_increase = Config.CityConfig.URBAN_INCREASE_SOUTH
+	
+	# 如果所有方向的城市化增长都为0，直接返回
+	if northern_urban_increase == 0 and eastern_urban_increase == 0 and \
+	   western_urban_increase == 0 and southern_urban_increase == 0:
+		return
+	
+	var urbanity_adj: float = 0.0
+	
+	# 获取当前区块的世界绝对坐标（对应C++的point_abs_om this_om = pos()）
+	var this_om_x = chunk_coord.x
+	var this_om_y = chunk_coord.y
+	
+	# 北方向城市化增长影响
+	if northern_urban_increase != 0 and this_om_y < 0:
+		urbanity_adj -= this_om_y * northern_urban_increase / 10.0
+		# 添加一些衰减到边缘，保持城市较大但打破巨型城市
+		# 如果我们在这些方向也期望巨型城市则不适用
+		if this_om_x < 0 and western_urban_increase == 0:
+			urbanity_adj /= max(this_om_x / -2.0, 1.0)
+		if this_om_x > 0 and eastern_urban_increase == 0:
+			urbanity_adj /= max(this_om_x / 2.0, 1.0)
+	
+	# 东方向城市化增长影响
+	if eastern_urban_increase != 0 and this_om_x > 0:
+		urbanity_adj += this_om_x * eastern_urban_increase / 10.0
+		if this_om_y < 0 and northern_urban_increase == 0:
+			urbanity_adj /= max(this_om_y / -2.0, 1.0)
+		if this_om_y > 0 and southern_urban_increase == 0:
+			urbanity_adj /= max(this_om_y / 2.0, 1.0)
+	
+	# 西方向城市化增长影响
+	if western_urban_increase != 0 and this_om_x < 0:
+		urbanity_adj -= this_om_x * western_urban_increase / 10.0
+		if this_om_y < 0 and northern_urban_increase == 0:
+			urbanity_adj /= max(this_om_y / -2.0, 1.0)
+		if this_om_y > 0 and southern_urban_increase == 0:
+			urbanity_adj /= max(this_om_y / 2.0, 1.0)
+	
+	# 南方向城市化增长影响
+	if southern_urban_increase != 0 and this_om_y > 0:
+		urbanity_adj += this_om_y * southern_urban_increase / 10.0
+		if this_om_x < 0 and western_urban_increase == 0:
+			urbanity_adj /= max(this_om_x / -2.0, 1.0)
+		if this_om_x > 0 and eastern_urban_increase == 0:
+			urbanity_adj /= max(this_om_x / 2.0, 1.0)
+	
+	# 设置最终的城市化程度值
+	urbanity = int(urbanity_adj)
+	
+	# 调试输出（对应C++的debugmsg，可以根据需要启用）
+	# print("urbanity = %d at OM %d, %d" % [urbanity, this_om_x, this_om_y])
+
 # ============================================================================
 # 画布渲染更新系统
 # ============================================================================
@@ -1672,55 +1746,137 @@ func get_simple_info() -> String:
 		int(floor(float(world_grid_x) / Config.RenderConfig.CHUNK_SIZE)),
 		int(floor(float(world_grid_y) / Config.RenderConfig.CHUNK_SIZE))
 	)
+	
+	# 计算当前区块的城市数量
+	var cities_in_current_chunk = 0
+	for city in cities:
+		if city.pos_om == current_chunk:
+			cities_in_current_chunk += 1
 
-	return "位置: (%d, %d)\n区块: (%d, %d)\n地形: %s\n森林密度: %.3f\n城市数量: %d" % [
+	return "位置: (%d, %d)\n区块: (%d, %d)\n地形: %s\n森林密度: %.3f\n城市化程度: %d\n总城市数: %d\n本区块城市: %d" % [
 		world_grid_x, world_grid_y, current_chunk.x, current_chunk.y, 
-		get_terrain_type(world_grid_x, world_grid_y), forest_size_adjust, cities.size()
+		get_terrain_type(world_grid_x, world_grid_y), forest_size_adjust, urbanity, cities.size(), cities_in_current_chunk
 	]
 
-
-
-func get_debug_info() -> String:
-	"""返回详细的调试信息，用于开发时诊断"""
-	var world_pos = player_ref.global_position if player_ref else Vector2.ZERO
-	var world_grid_x = int(world_pos.x / Config.RenderConfig.TILE_SIZE)
-	var world_grid_y = int(world_pos.y / Config.RenderConfig.TILE_SIZE)
-	var current_chunk = Vector2i(
-		int(floor(float(world_grid_x) / Config.RenderConfig.CHUNK_SIZE)),
-		int(floor(float(world_grid_y) / Config.RenderConfig.CHUNK_SIZE))
+func get_building_info_at_position(world_grid_pos: Vector2i) -> Dictionary:
+	"""
+	获取指定世界坐标位置的建筑信息
+	返回包含建筑类型、特殊属性等信息的字典
+	"""
+	var result = {
+		"has_building": false,
+		"building_type": "",
+		"building_id": "",
+		"is_special": false,
+		"is_unique": false,
+		"terrain_type": get_terrain_type(world_grid_pos.x, world_grid_pos.y)
+	}
+	
+	# 检查是否是城市瓦片
+	var chunk_coord = Vector2i(
+		int(floor(float(world_grid_pos.x) / Config.RenderConfig.CHUNK_SIZE)),
+		int(floor(float(world_grid_pos.y) / Config.RenderConfig.CHUNK_SIZE))
 	)
-	var local_x = world_grid_x - current_chunk.x * Config.RenderConfig.CHUNK_SIZE
-	var local_y = world_grid_y - current_chunk.y * Config.RenderConfig.CHUNK_SIZE
+	var local_pos = Vector2i(
+		world_grid_pos.x - chunk_coord.x * Config.RenderConfig.CHUNK_SIZE,
+		world_grid_pos.y - chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
+	)
 	
-	# 检测边界状态
-	var near_left = local_x < Config.RenderConfig.BORDER_THRESHOLD
-	var near_right = local_x >= Config.RenderConfig.CHUNK_SIZE - Config.RenderConfig.BORDER_THRESHOLD
-	var near_top = local_y < Config.RenderConfig.BORDER_THRESHOLD
-	var near_bottom = local_y >= Config.RenderConfig.CHUNK_SIZE - Config.RenderConfig.BORDER_THRESHOLD
+	# 检查是否在城市瓦片中
+	if city_tiles.has(local_pos):
+		result.has_building = true
+		
+		# 检查是否是特殊建筑
+		if overmap_special_placements.has(world_grid_pos):
+			result.is_special = true
+			result.building_id = overmap_special_placements[world_grid_pos]
+			result.building_type = _get_building_display_name(result.building_id)
+			
+			# 检查是否是独特建筑
+			if globally_unique_buildings.has(result.building_id):
+				result.is_unique = true
+		else:
+			# 根据距离最近城市中心的距离推断建筑类型
+			var nearest_city = _find_nearest_city(world_grid_pos)
+			if nearest_city:
+				var dist_to_city = _square_dist(world_grid_pos, nearest_city.pos)
+				var town_dist = dist_to_city * 100 / max(nearest_city.size, 1)
+				
+				# 使用和建筑生成相同的逻辑来推断建筑类型
+				var shop_radius = Config.CityConfig.SHOP_RADIUS
+				var park_radius = Config.CityConfig.PARK_RADIUS
+				var shop_sigma = Config.CityConfig.SHOP_SIGMA
+				var park_sigma = Config.CityConfig.PARK_SIGMA
+				
+				var shop_normal = shop_radius
+				if shop_sigma > 0:
+					shop_normal = max(shop_normal, int(_normal_roll(shop_radius, shop_sigma)))
+				
+				var park_normal = park_radius
+				if park_sigma > 0:
+					park_normal = max(park_normal, int(_normal_roll(park_radius, park_sigma)))
+				
+				if shop_normal > town_dist:
+					result.building_type = "商店区"
+				elif park_normal > town_dist:
+					result.building_type = "公园区"
+				else:
+					result.building_type = "住宅区"
+			else:
+				result.building_type = "一般建筑"
 	
-	var edge_status = []
-	if near_left: edge_status.append("左")
-	if near_right: edge_status.append("右")
-	if near_top: edge_status.append("上")
-	if near_bottom: edge_status.append("下")
+	return result
+
+func get_building_info_at_mouse(_mouse_pos: Vector2 = Vector2.ZERO) -> Dictionary:
+	"""
+	获取鼠标位置的建筑信息
+	"""
+	# 将屏幕坐标转换为世界网格坐标
+	var camera = get_viewport().get_camera_2d()
+	if not camera:
+		return {"has_building": false, "terrain_type": "未知"}
 	
-	var edge_info = "无" if edge_status.is_empty() else ", ".join(edge_status)
+	var world_pos = camera.get_global_mouse_position()
+	var world_grid_pos = Vector2i(
+		int(world_pos.x / Config.RenderConfig.TILE_SIZE),
+		int(world_pos.y / Config.RenderConfig.TILE_SIZE)
+	)
 	
-	# 检查周围区块生成状态
-	var surrounding_chunks = []
-	for dx in range(-1, 2):
-		for dy in range(-1, 2):
-			if dx == 0 and dy == 0:
-				continue
-			var chunk_coord = current_chunk + Vector2i(dx, dy)
-			var generated = generated_chunks.has(chunk_coord)
-			surrounding_chunks.append("(%d,%d):%s" % [chunk_coord.x, chunk_coord.y, "已生成" if generated else "未生成"])
+	return get_building_info_at_position(world_grid_pos)
+
+func _get_building_display_name(building_id: String) -> String:
+	"""
+	将建筑ID转换为显示名称
+	"""
+	var name_map = {
+		"house_small": "小型住宅",
+		"house_medium": "中型住宅", 
+		"house_large": "大型住宅",
+		"shop_general": "综合商店",
+		"shop_supermarket": "超市",
+		"shop_mall": "购物中心",
+		"park_small": "小公园",
+		"park_medium": "中型公园",
+		"park_large": "大型公园",
+		"test_mall": "测试购物中心"
+	}
 	
-	return "玩家世界位置: (%d, %d), 当前区块: %s, 区块内位置: (%d, %d)\n已生成区块数: %d, 接近边缘: %s\n冷却时间: %.2fs\n视野大小: %dx%d 格子, 画布: %dx%d 像素\n周围区块: %s" % [
-		world_grid_x, world_grid_y, str(current_chunk), local_x, local_y, generated_chunks.size(),
-		edge_info, chunk_creation_cooldown, map_size_x, map_size_y, canvas_size_x, canvas_size_y,
-		", ".join(surrounding_chunks)
-	]
+	return name_map.get(building_id, building_id.capitalize())
+
+func _find_nearest_city(world_pos: Vector2i) -> City:
+	"""
+	查找距离指定位置最近的城市
+	"""
+	var nearest_city: City = null
+	var min_distance = INF
+	
+	for city in cities:
+		var distance = _square_dist(world_pos, city.pos)
+		if distance < min_distance:
+			min_distance = distance
+			nearest_city = city
+	
+	return nearest_city
 
 func _draw_swamp_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, color: Color):
 	"""
@@ -1833,7 +1989,7 @@ func place_cities(chunk_coord: Vector2i):
 	
 	# 确保城市大小调整永远不会使op_city_size降到2以下
 	var city_size_adjust = min(urbanity - int(forestosity / 2.0), -1 * op_city_size + 2)
-	var city_space_adjust = urbanity >> 1  # 位移操作代替除法2
+	var city_space_adjust = urbanity / 2.0
 	var max_city_size = min(op_city_size + city_size_adjust, op_city_size * max_urbanity)
 	
 	if max_city_size < op_city_size:
@@ -1862,7 +2018,8 @@ func place_cities(chunk_coord: Vector2i):
 			num_cities_on_this_overmap += 1
 			cities_to_place.append(c)
 	
-	var use_random_cities = cities.is_empty()
+	# 对于每个区块，如果没有预定义城市就使用随机生成
+	var use_random_cities = cities_to_place.is_empty()
 	
 	# 如果没有预定义城市，随机生成城市数量
 	if use_random_cities:
@@ -1870,9 +2027,10 @@ func place_cities(chunk_coord: Vector2i):
 	
 	var MAX_PLACEMENT_ATTEMPTS = Config.CityConfig.MAX_PLACEMENT_ATTEMPTS
 	var placement_attempts = 0
+	var cities_placed_in_this_chunk = 0  # 追踪当前区块已放置的城市数量
 	
 	# 为num_cities_on_this_overmap个城市放置种子点
-	while cities.size() < num_cities_on_this_overmap and placement_attempts < MAX_PLACEMENT_ATTEMPTS:
+	while cities_placed_in_this_chunk < num_cities_on_this_overmap and placement_attempts < MAX_PLACEMENT_ATTEMPTS:
 		placement_attempts += 1
 		
 		var p_local: Vector2i
@@ -1919,15 +2077,16 @@ func place_cities(chunk_coord: Vector2i):
 		
 		if placement_attempts == 0:
 			cities.append(tmp)
+			cities_placed_in_this_chunk += 1  # 增加当前区块的城市计数
 			var start_dir = _random_direction()
 			var cur_dir = start_dir
 			
 			# 追踪已放置的城市独特建筑
-			var placed_unique_buildings: Dictionary = {}
+			var local_placed_unique_buildings: Dictionary = {}
 			
 			# 在4个方向上建造城市街道
 			while true:
-				_build_city_street(tmp.pos, tmp.size, cur_dir, tmp, placed_unique_buildings, chunk_coord)
+				_build_city_street(tmp.pos, tmp.size, cur_dir, tmp, local_placed_unique_buildings, chunk_coord)
 				cur_dir = _turn_right(cur_dir)
 				if cur_dir == start_dir:
 					break
@@ -1935,48 +2094,505 @@ func place_cities(chunk_coord: Vector2i):
 	# 执行城市瓦片洪水填充
 	_flood_fill_city_tiles(chunk_coord)
 
-func _build_city_street(city_center: Vector2i, city_size: int, direction: int, _city: City, 
-						_placed_unique_buildings: Dictionary, chunk_coord: Vector2i):
+func _build_city_street(street_start: Vector2i, cs: int, direction: int, city: City, 
+						local_placed_unique_buildings: Dictionary, chunk_coord: Vector2i, block_width: int = 2):
 	"""
-	在指定方向上建造城市街道和建筑
-	模拟C++版本的build_city_street函数逻辑
+	完全仿照C++版本的build_city_street函数
+	递归生成复杂的城市街道网络，包括分支街道和建筑放置
 	"""
-	var road_points: Array[Vector2i] = []
+	var c = cs
+	var croad = cs
 	
-	# 获取方向向量
-	var dir_vec = _direction_to_vector(direction)
+	if direction < 0 or direction > 3:
+		print("Invalid road direction: ", direction)
+		return
 	
-	# 从城市中心开始，向指定方向延伸街道
-	for i in range(1, city_size + 1):
-		var road_pos = city_center + dir_vec * i
+	# 规划街道路径（对应C++的lay_out_street）
+	var street_path = _lay_out_street(street_start, direction, cs + 1, chunk_coord)
+	
+	if street_path.size() <= 1:
+		return  # 路径太短，不值得建造
+	
+	# 建造实际的街道（对应C++的build_connection）
+	_build_connection(street_path, chunk_coord)
+	
+	# 沿着既定方向增长，产生子道路并放置建筑
+	# 跳过第一个节点（起始点）
+	var new_width = 3 if block_width == 2 else 2  # 交替宽窄街区
+	
+	for i in range(1, street_path.size()):
+		c -= 1
+		var current_pos = street_path[i]
 		
-		# 检查是否在区块边界内
-		if _is_inbounds_local(road_pos):
-			road_points.append(road_pos)
-			var world_pos = _local_to_world(road_pos, chunk_coord)
-			terrain_data[world_pos] = Config.TerrainConfig.TYPE_ROAD
-			city_tiles[road_pos] = true
+		# 生成分支街道
+		if c >= 2 and c < croad - block_width:
+			croad = c
+			var left = cs - randi_range(1, 3)
+			var right = cs - randi_range(1, 3)
+			
+			# 移除长度为1的道路残端
+			if left == 1:
+				left += 1
+			if right == 1:
+				right += 1
+			
+			# 递归建造左右分支街道
+			_build_city_street(current_pos, left, _turn_left(direction), city, 
+							  local_placed_unique_buildings, chunk_coord, new_width)
+			_build_city_street(current_pos, right, _turn_right(direction), city, 
+							  local_placed_unique_buildings, chunk_coord, new_width)
+			
+			# 有时在交叉路口放置特殊地物（如下水道井盖）
+			if _one_in(2):
+				var _world_pos = _local_to_world(current_pos, chunk_coord)
+				# 可以在这里添加特殊路面标记
+				# ter_set(_world_pos, special_road_variant)
+		
+		# 在街道两侧放置建筑
+		if not _one_in(Config.CityConfig.BUILDING_CHANCE):
+			_place_building(current_pos, _turn_left(direction), city, local_placed_unique_buildings, chunk_coord)
+		if not _one_in(Config.CityConfig.BUILDING_CHANCE):
+			_place_building(current_pos, _turn_right(direction), city, local_placed_unique_buildings, chunk_coord)
 	
-	# 在街道两侧建造建筑
-	for road_pos in road_points:
-		_place_city_buildings_around_road(road_pos, direction, _placed_unique_buildings, chunk_coord)
+	# 如果我们还有空间，在城镇边缘做一个转弯
+	# 似乎能形成小社区
+	cs -= randi_range(1, 3)
+	
+	if cs >= 2 and c == 0 and street_path.size() > 0:
+		var last_pos = street_path.back()
+		var rnd_dir = _turn_random(direction)
+		_build_city_street(last_pos, cs, rnd_dir, city, local_placed_unique_buildings, chunk_coord)
+		if _one_in(5):
+			_build_city_street(last_pos, cs, _opposite_direction(rnd_dir), city, 
+							  local_placed_unique_buildings, chunk_coord, new_width)
 
-func _place_city_buildings_around_road(road_pos: Vector2i, road_direction: int, 
-									   _placed_unique_buildings: Dictionary, chunk_coord: Vector2i):
+func _lay_out_street(source: Vector2i, direction: int, length: int, chunk_coord: Vector2i) -> Array[Vector2i]:
 	"""
-	在道路周围放置城市建筑
+	规划街道路径，对应C++的lay_out_street函数
+	检查地形冲突和边界，返回实际可建造的路径
 	"""
-	var perpendicular_dirs = _get_perpendicular_directions(road_direction)
+	var path: Array[Vector2i] = []
+	var dir_vec = _direction_to_vector(direction)
+	var actual_len = 0
 	
-	for perp_dir in perpendicular_dirs:
-		var building_pos = road_pos + _direction_to_vector(perp_dir)
+	# 检查是否需要延长一步
+	var end_pos = source + dir_vec * (length + 1)
+	if _is_inbounds_local(end_pos, 1):
+		var world_end = _local_to_world(end_pos, chunk_coord)
+		if terrain_data.get(world_end, Config.TerrainConfig.TYPE_EMPTY) == Config.TerrainConfig.TYPE_ROAD:
+			length += 1
+	
+	while actual_len < length:
+		var pos = source + dir_vec * actual_len
 		
-		if _is_inbounds_local(building_pos, 1):  # 留1格边界
+		# 不要接近区块边界
+		if not _is_inbounds_local(pos, 1):
+			break
+		
+		var world_pos = _local_to_world(pos, chunk_coord)
+		var terrain_type = terrain_data.get(world_pos, Config.TerrainConfig.TYPE_EMPTY)
+		
+		# 不能在河流、湖泊等特殊地形上建造道路
+		if terrain_type == Config.TerrainConfig.TYPE_RIVER or \
+		   terrain_type == Config.TerrainConfig.TYPE_LAKE_SURFACE or \
+		   terrain_type == Config.TerrainConfig.TYPE_LAKE_SHORE:
+			break
+		
+		# 检查道路冲突（防止道路过于密集）
+		var collided = false
+		var collisions = 0
+		var forward_pos = pos + dir_vec
+		var backward_pos = pos - dir_vec
+		
+		for i in range(-1, 2):
+			if collided:
+				break
+			for j in range(-1, 2):
+				var check_pos = pos + Vector2i(i, j)
+				
+				# 跳过前后方向和当前位置
+				if check_pos == forward_pos or check_pos == backward_pos or check_pos == pos:
+					continue
+				
+				var check_world = _local_to_world(check_pos, chunk_coord)
+				if terrain_data.get(check_world, Config.TerrainConfig.TYPE_EMPTY) == Config.TerrainConfig.TYPE_ROAD:
+					collisions += 1
+		
+		# 停止道路紧邻运行
+		if collisions >= 3:
+			collided = true
+			break
+		
+		if collided:
+			break
+		
+		city_tiles[pos] = true
+		path.append(pos)
+		actual_len += 1
+		
+		# 如果超过1步且遇到现有道路，在此停止
+		if actual_len > 1 and terrain_type == Config.TerrainConfig.TYPE_ROAD:
+			break
+	
+	return path
+
+func _build_connection(path: Array[Vector2i], chunk_coord: Vector2i):
+	"""
+	建造实际的道路连接，对应C++的build_connection函数
+	"""
+	if path.is_empty():
+		return
+	
+	for i in range(path.size()):
+		var pos = path[i]
+		var world_pos = _local_to_world(pos, chunk_coord)
+		
+		# 设置道路地形
+		terrain_data[world_pos] = Config.TerrainConfig.TYPE_ROAD
+		city_tiles[pos] = true
+
+func _place_building(road_pos: Vector2i, direction: int, city: City, 
+					local_placed_unique_buildings: Dictionary, chunk_coord: Vector2i):
+	"""
+	在指定位置和方向放置建筑，完全仿照C++版本的place_building函数
+	"""
+	var building_pos = road_pos + _direction_to_vector(direction)
+	var building_dir = _opposite_direction(direction)  # 建筑朝向与道路方向相反
+	
+	# 检查建筑位置是否在边界内
+	if not _is_inbounds_local(building_pos, 1):
+		return
+	
+	var building_world_pos = _local_to_world(building_pos, chunk_coord)
+	
+	# 计算到城市中心的距离（使用三角距离，对应C++的trig_dist）
+	var actual_distance = sqrt(_square_dist(building_world_pos, city.pos))
+	var town_dist = int((actual_distance * 100) / max(city.size, 1))
+	
+	# 调试输出
+	if randf() < 0.02:  # 2%概率输出调试信息
+		print("建筑放置: 位置=", building_world_pos, " 城市中心=", city.pos, " 距离=", actual_distance, " town_dist=", town_dist)
+	
+	# 重试机制：最多尝试10次放置建筑
+	for retries in range(10, 0, -1):
+		var building_type = _pick_random_building_to_place(town_dist, city.size, local_placed_unique_buildings)
+		
+		# 检查是否可以放置这个建筑
+		if _can_place_building_special(building_type, building_pos, building_dir, chunk_coord):
+			# 放置建筑
+			var used_positions = _place_building_special(building_type, building_pos, building_dir, city, chunk_coord)
+			
+			# 将使用的位置标记为城市瓦片
+			for pos in used_positions:
+				city_tiles[pos] = true
+			
+			# 标记城市独特建筑已放置
+			if building_type.has("city_unique") and building_type.city_unique:
+				local_placed_unique_buildings[building_type.id] = true
+			
+			# 调试输出
+			if randf() < 0.05:
+				print("成功放置建筑: ", building_type.id, " 位置: ", building_pos, " 使用位置数: ", used_positions.size())
+			
+			break  # 成功放置，退出重试循环
+
+func _can_place_building_special(building_type: Dictionary, pos: Vector2i, _direction: int, chunk_coord: Vector2i) -> bool:
+	"""
+	检查是否可以放置指定建筑类型，简化版的can_place_special
+	"""
+	var world_pos = _local_to_world(pos, chunk_coord)
+	var terrain_type = terrain_data.get(world_pos, Config.TerrainConfig.TYPE_EMPTY)
+	
+	# 基本检查：只能在空地上建造
+	if terrain_type != Config.TerrainConfig.TYPE_LAND:
+		return false
+	
+	# 检查全局独特性约束
+	if building_type.has("globally_unique") and building_type.globally_unique:
+		if globally_unique_buildings.has(building_type.id):
+			return false
+	
+	# 检查建筑大小要求（简化处理）
+	var building_size = building_type.get("size", Vector2i(1, 1))
+	for x in range(building_size.x):
+		for y in range(building_size.y):
+			var check_pos = pos + Vector2i(x, y)
+			var check_world_pos = _local_to_world(check_pos, chunk_coord)
+			
+			# 检查边界
+			if not _is_inbounds_local(check_pos, 1):
+				return false
+			
+			# 检查地形
+			var check_terrain = terrain_data.get(check_world_pos, Config.TerrainConfig.TYPE_EMPTY)
+			if check_terrain != Config.TerrainConfig.TYPE_LAND:
+				return false
+	
+	return true
+
+func _place_building_special(building_type: Dictionary, pos: Vector2i, _direction: int, _city: City, chunk_coord: Vector2i) -> Array[Vector2i]:
+	"""
+	放置特殊建筑，简化版的place_special
+	"""
+	var used_positions: Array[Vector2i] = []
+	var building_size = building_type.get("size", Vector2i(1, 1))
+	
+	# 标记全局独特建筑
+	if building_type.has("globally_unique") and building_type.globally_unique:
+		globally_unique_buildings[building_type.id] = true
+	
+	# 放置建筑的所有瓦片
+	for x in range(building_size.x):
+		for y in range(building_size.y):
+			var building_pos = pos + Vector2i(x, y)
 			var world_pos = _local_to_world(building_pos, chunk_coord)
-			# 只在空地上建造建筑
-			if terrain_data.get(world_pos, Config.TerrainConfig.TYPE_EMPTY) == Config.TerrainConfig.TYPE_LAND:
-				terrain_data[world_pos] = Config.TerrainConfig.TYPE_CITY_TILE
-				city_tiles[building_pos] = true
+			
+			# 设置地形为城市瓦片
+			terrain_data[world_pos] = Config.TerrainConfig.TYPE_CITY_TILE
+			
+			# 记录特殊建筑放置
+			overmap_special_placements[world_pos] = building_type.id
+			
+			used_positions.append(building_pos)
+	
+	return used_positions
+
+func _pick_random_building_to_place(town_dist: int, town_size: int, placed_unique: Dictionary) -> Dictionary:
+	"""
+	选择要放置的随机建筑类型，完全仿照C++版本的pick_random_building_to_place
+	"""
+	# 获取商店和公园分布参数
+	var shop_radius = Config.CityConfig.SHOP_RADIUS
+	var park_radius = Config.CityConfig.PARK_RADIUS
+	var shop_sigma = Config.CityConfig.SHOP_SIGMA
+	var park_sigma = Config.CityConfig.PARK_SIGMA
+	
+	# 正态分布调整商店和公园分布区域
+	# 限制在半径的一半以防止房屋在城市中心生成
+	# 公园几乎可以保证在城市任何地方都有生成概率
+	var shop_normal = shop_radius
+	if shop_sigma > 0:
+		shop_normal = max(shop_normal, int(_normal_roll(shop_radius, shop_sigma)))
+	
+	var park_normal = park_radius
+	if park_sigma > 0:
+		park_normal = max(park_normal, int(_normal_roll(park_radius, park_sigma)))
+	
+	# 根据距离选择建筑类型
+	var building_category: String
+	if shop_normal > town_dist:
+		building_category = "shops"
+	elif park_normal > town_dist:
+		building_category = "parks"
+	else:
+		building_category = "houses"
+	
+	# 获取建筑类型列表
+	var building_types = Config.CityConfig.get_building_types()
+	var available_buildings = building_types[building_category]
+	
+	# 循环选择，直到找到有效的建筑
+	var attempts = 0
+	while attempts < 100:  # 防止无限循环
+		var ret = _random_entry(available_buildings)
+		
+		# 检查独特性约束
+		var existing_unique = false
+		if ret.has("city_unique") and ret.city_unique:
+			existing_unique = placed_unique.has(ret.id)
+		elif ret.has("globally_unique") and ret.globally_unique:
+			existing_unique = globally_unique_buildings.has(ret.id)
+		
+		# 检查城市大小约束（简化版）
+		var size_valid = true
+		if ret.has("min_city_size"):
+			size_valid = town_size >= ret.min_city_size
+		if ret.has("max_city_size"):
+			size_valid = size_valid and town_size <= ret.max_city_size
+		
+		if not existing_unique and size_valid:
+			return ret
+		
+		attempts += 1
+	
+	# 如果找不到合适的建筑，返回默认房屋
+	return {"id": "house_small", "size": Vector2i(1, 1), "city_unique": false, "globally_unique": false}
+
+func _normal_roll(mean: float, sigma: float) -> float:
+	"""
+	正态分布随机数生成（简化版Box-Muller变换）
+	"""
+	if sigma <= 0:
+		return mean
+	
+	# 简化的正态分布近似
+	var u1 = randf()
+	var u2 = randf()
+	var z = sqrt(-2.0 * log(u1)) * cos(2.0 * PI * u2)
+	return mean + sigma * z
+
+func _can_place_building(pos: Vector2i, _building_type: Dictionary, chunk_coord: Vector2i) -> bool:
+	"""
+	检查是否可以在指定位置放置建筑
+	"""
+	var building_world_pos = _local_to_world(pos, chunk_coord)
+	var terrain_type = terrain_data.get(building_world_pos, Config.TerrainConfig.TYPE_EMPTY)
+	
+	# 只能在空地上建造
+	return terrain_type == Config.TerrainConfig.TYPE_LAND
+
+func _can_place_special(special: Dictionary, pos: Vector2i, direction: int, 
+						chunk_coord: Vector2i, must_be_unexplored: bool = false) -> bool:
+	"""
+	检查特殊建筑是否可以放置，仿照C++版本的can_place_special
+	"""
+	if direction < 0 or direction > 3:
+		return false
+	
+	if not special.has("id") or special.id.is_empty():
+		return false
+	
+	# 检查全局独特性约束
+	if special.has("globally_unique") and special.globally_unique:
+		if globally_unique_buildings.has(special.id):
+			return false
+	
+	# 如果有怪物生成区域，检查是否与安全区域冲突
+	if special.has("monster_spawns") and special.monster_spawns.has("group"):
+		var spawns = special.monster_spawns
+		var radius = spawns.get("radius_max", 5)
+		
+		# 检查生成半径内是否有安全区域
+		for x in range(pos.x - radius, pos.x + radius + 1):
+			for y in range(pos.y - radius, pos.y + radius + 1):
+				var check_pos = Vector2i(x, y)
+				var world_pos = _local_to_world(check_pos, chunk_coord)
+				if overmap_special_placements.has(world_pos):
+					var existing_special_id = overmap_special_placements[world_pos]
+					# 这里可以检查是否有"SAFE_AT_WORLDGEN"标志
+					# 简化处理：假设某些建筑类型是安全的
+					if existing_special_id.begins_with("shelter") or existing_special_id.begins_with("bunker"):
+						return false
+	
+	# 检查所需的地形类型
+	var required_locations = special.get("required_locations", [])
+	for location in required_locations:
+		var check_pos = pos + _rotate_point(location.get("offset", Vector2i.ZERO), direction)
+		var world_pos = _local_to_world(check_pos, chunk_coord)
+		
+		# 检查边界
+		if not _in_bounds(check_pos, chunk_coord):
+			return false
+		
+		# 如果必须未探索，检查是否已生成子地图
+		if must_be_unexplored:
+			# 简化处理：检查是否已有地形数据
+			if terrain_data.has(world_pos):
+				return false
+		
+		# 检查地形类型是否符合要求
+		var terrain_type = terrain_data.get(world_pos, Config.TerrainConfig.TYPE_LAND)
+		var allowed_terrains = location.get("allowed_terrains", [Config.TerrainConfig.TYPE_LAND])
+		if not allowed_terrains.has(terrain_type):
+			return false
+	
+	return true
+
+func _place_special(special: Dictionary, pos: Vector2i, direction: int, _city: City, 
+					chunk_coord: Vector2i, must_be_unexplored: bool = false, force: bool = false) -> Array[Vector2i]:
+	"""
+	放置特殊建筑，仿照C++版本的place_special
+	"""
+	if direction < 0 or direction > 3:
+		return []
+	
+	if not force:
+		if not _can_place_special(special, pos, direction, chunk_coord, must_be_unexplored):
+			return []
+	
+	var placed_positions: Array[Vector2i] = []
+	
+	# 标记全局独特建筑
+	if special.has("globally_unique") and special.globally_unique:
+		globally_unique_buildings[special.id] = true
+	elif special.has("city_unique") and special.city_unique:
+		placed_unique_buildings[special.id] = true
+	
+	# 标记建筑为安全区域（如果适用）
+	var is_safe_zone = special.get("safe_at_worldgen", false)
+	
+	# 放置建筑的所有组件
+	var building_locations = special.get("locations", [{"offset": Vector2i.ZERO}])
+	for location in building_locations:
+		var building_pos = pos + _rotate_point(location.get("offset", Vector2i.ZERO), direction)
+		var world_pos = _local_to_world(building_pos, chunk_coord)
+		
+		# 设置地形
+		var building_terrain = location.get("terrain_type", Config.TerrainConfig.TYPE_CITY_TILE)
+		terrain_data[world_pos] = building_terrain
+		city_tiles[building_pos] = true
+		
+		# 记录特殊建筑放置
+		overmap_special_placements[world_pos] = special.id
+		placed_positions.append(building_pos)
+	
+	# 放置怪物生成点（如果有）
+	if special.has("monster_spawns") and special.monster_spawns.has("group"):
+		var spawns = special.monster_spawns
+		var pop = randi_range(spawns.get("population_min", 1), spawns.get("population_max", 5))
+		var rad = randi_range(spawns.get("radius_min", 1), spawns.get("radius_max", 3))
+		
+		# 这里可以添加怪物群组生成逻辑
+		print("Would spawn ", pop, " monsters of type ", spawns.group, " with radius ", rad, " at ", pos)
+	
+	# 如果是安全区域，移除现有生成点
+	if is_safe_zone:
+		# 这里可以移除指定区域内的怪物生成点
+		pass
+	
+	return placed_positions
+
+func _rotate_point(point: Vector2i, direction: int) -> Vector2i:
+	"""
+	根据方向旋转点，对应C++中的om_direction::rotate
+	"""
+	match direction:
+		0:  # 北
+			return point
+		1:  # 东
+			return Vector2i(-point.y, point.x)
+		2:  # 南
+			return Vector2i(-point.x, -point.y)
+		3:  # 西
+			return Vector2i(point.y, -point.x)
+		_:
+			return point
+
+func _straight_path(source: Vector2i, direction: int, length: int) -> Array[Vector2i]:
+	"""
+	生成直线路径，对应C++版本的straight_path
+	"""
+	var path: Array[Vector2i] = []
+	if length == 0:
+		return path
+	
+	var current_pos = source
+	var dir_vector = _direction_to_vector(direction)
+	
+	path.resize(length)
+	for i in range(length):
+		path.append(current_pos)
+		if i < length - 1:  # 不在最后一个位置移动
+			current_pos += dir_vector
+	
+	return path
+
+func _in_bounds(pos: Vector2i, _chunk_coord: Vector2i) -> bool:
+	"""
+	检查位置是否在区块边界内
+	"""
+	return pos.x >= 0 and pos.x < Config.RenderConfig.CHUNK_SIZE and \
+		   pos.y >= 0 and pos.y < Config.RenderConfig.CHUNK_SIZE
 
 func _flood_fill_city_tiles(_chunk_coord: Vector2i):
 	"""
@@ -2044,6 +2660,18 @@ func _turn_right(direction: int) -> int:
 	"""向右转90度"""
 	return (direction + 1) % 4
 
+func _turn_left(direction: int) -> int:
+	"""向左转90度"""
+	return (direction + 3) % 4
+
+func _opposite_direction(direction: int) -> int:
+	"""返回相反方向"""
+	return (direction + 2) % 4
+
+func _turn_random(direction: int) -> int:
+	"""随机转向（左或右）"""
+	return _turn_left(direction) if _one_in(2) else _turn_right(direction)
+
 func _direction_to_vector(direction: int) -> Vector2i:
 	"""将方向转换为向量"""
 	match direction:
@@ -2099,3 +2727,106 @@ func _draw_city_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, co
 				# 或者填充整个建筑（可选）
 				else:
 					atlas_image.set_pixel(x, start_y + y, Color(color.r * 0.7, color.g * 0.7, color.b * 0.7, color.a))
+
+# ============================================================================
+# 新功能演示和测试函数
+# ============================================================================
+
+func test_new_building_system(chunk_coord: Vector2i):
+	"""
+	测试新的建筑放置系统功能
+	演示如何使用新实现的C++函数
+	"""
+	print("=== 测试新建筑系统功能 ===")
+	
+	# 测试建筑类型获取
+	var building_types = Config.CityConfig.get_building_types()
+	print("可用建筑类型：", building_types.keys())
+	
+	# 测试建筑选择逻辑
+	var test_positions = [
+		{"dist": 2, "size": 10},  # 应该选择商店
+		{"dist": 7, "size": 20},  # 应该选择公园
+		{"dist": 15, "size": 30}  # 应该选择房屋
+	]
+	
+	for test_case in test_positions:
+		var building = _pick_random_building_to_place(test_case.dist, test_case.size, {})
+		print("距离 ", test_case.dist, "，城市大小 ", test_case.size, " -> 选择建筑：", building.id)
+	
+	# 测试特殊建筑放置
+	var special_building = {
+		"id": "test_mall",
+		"globally_unique": true,
+		"required_locations": [
+			{"offset": Vector2i.ZERO, "allowed_terrains": [Config.TerrainConfig.TYPE_LAND]},
+			{"offset": Vector2i(1, 0), "allowed_terrains": [Config.TerrainConfig.TYPE_LAND]}
+		],
+		"locations": [
+			{"offset": Vector2i.ZERO, "terrain_type": Config.TerrainConfig.TYPE_CITY_TILE},
+			{"offset": Vector2i(1, 0), "terrain_type": Config.TerrainConfig.TYPE_CITY_TILE}
+		]
+	}
+	
+	var test_pos = Vector2i(10, 10)
+	var can_place = _can_place_special(special_building, test_pos, 0, chunk_coord)
+	print("可以在位置 ", test_pos, " 放置特殊建筑：", can_place)
+	
+	if can_place:
+		var dummy_city = City.new(test_pos, chunk_coord, 20)
+		var placed_positions = _place_special(special_building, test_pos, 0, dummy_city, chunk_coord)
+		print("成功放置特殊建筑，占用位置：", placed_positions)
+	
+	# 测试直线路径生成
+	var path = _straight_path(Vector2i(5, 5), 1, 5)  # 向东5步
+	print("从(5,5)向东生成5步路径：", path)
+	
+	# 测试正态分布
+	var normal_samples = []
+	for i in range(5):
+		normal_samples.append(_normal_roll(10.0, 2.0))
+	print("正态分布采样（均值10，标准差2）：", normal_samples)
+	
+	print("=== 新建筑系统测试完成 ===")
+
+func demo_advanced_city_generation(chunk_coord: Vector2i):
+	"""
+	演示高级城市生成功能
+	"""
+	print("=== 演示高级城市生成 ===")
+	
+	# 创建一个测试城市
+	var test_city = City.new(Vector2i(50, 50), chunk_coord, 25)
+	
+	# 演示不同距离的建筑分布
+	print("城市中心建筑分布演示：")
+	for distance in [1, 3, 5, 8, 12]:
+		var building = _pick_random_building_to_place(distance, test_city.size, {})
+		print("  距离中心 ", distance, " 格：", building.id)
+	
+	# 演示独特建筑约束
+	print("\n独特建筑约束演示：")
+	var _unique_building = {
+		"id": "unique_supermarket", 
+		"city_unique": true, 
+		"size": Vector2i(3, 3)
+	}
+	
+	# 第一次放置
+	placed_unique_buildings.clear()
+	var first_attempt = _pick_random_building_to_place(3, test_city.size, placed_unique_buildings)
+	if first_attempt.get("city_unique", false):
+		placed_unique_buildings[first_attempt.id] = true
+		print("  首次放置独特建筑：", first_attempt.id)
+	
+	# 第二次尝试放置相同建筑（应该被拒绝）
+	var second_attempt = _pick_random_building_to_place(3, test_city.size, placed_unique_buildings)
+	print("  再次尝试放置，得到：", second_attempt.id, 
+		  " (应该与首次不同)" if second_attempt.id != first_attempt.id else " (相同，可能是随机选择)")
+	
+	print("=== 高级城市生成演示完成 ===")
+
+# 自动测试函数说明
+# 如需测试新功能，可在_ready()函数中调用：
+# test_new_building_system(Vector2i.ZERO)
+# demo_advanced_city_generation(Vector2i.ZERO)
