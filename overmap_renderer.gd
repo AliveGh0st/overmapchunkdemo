@@ -4,6 +4,9 @@ class_name OvermapRenderer
 ## 连续地图overmap渲染器
 ## 负责动态生成和渲染无限大地图，包括地形生成、TileMap渲染和玩家标记管理
 
+# 预加载噪声管理器类
+const NoiseManager = preload("res://noise_manager.gd")
+
 # ============================================================================
 # 核心地图设置
 # ============================================================================
@@ -73,19 +76,13 @@ var rendered_area: Rect2i = Rect2i()  ## 当前已渲染的屏幕区域
 # ============================================================================
 # 噪声生成器实例
 # ============================================================================
-var lake_noise: FastNoiseLite  ## 湖泊生成噪声器
+# 噪声生成器实例 - 使用噪声管理器统一管理
+# ============================================================================
+var noise_manager: NoiseManager  ## 噪声管理器实例
 
 # 动态森林大小调整值（替代原来的常量）
 var forest_size_adjust: float = 0.0 ## 森林大小调整值，对应C++的forest_size_adjust
 # 注意：forestosity在城市系统部分已声明
-
-# 森林噪声生成器实例
-var forest_noise_1: FastNoiseLite ## 第一层噪声生成器 - 森林基础分布
-var forest_noise_2: FastNoiseLite ## 第二层噪声生成器 - 森林密度减少效果
-
-
-# 洪泛平原噪声生成器实例
-var floodplain_noise: FastNoiseLite ## 洪泛平原噪声生成器
 
 # ============================================================================
 # 全局系统设置
@@ -146,9 +143,7 @@ func _ready():
 	
 	# 设置各个子系统
 	setup_tilemap()
-	setup_lake_noise()
-	setup_forest_noise()
-	setup_floodplain_noise()
+	setup_noise_manager()
 	
 	# 监听窗口大小变化事件
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
@@ -460,50 +455,15 @@ func create_player_tileset() -> TileSet:
 # 噪声生成器初始化
 # ============================================================================
 
-func setup_lake_noise():
+func setup_noise_manager():
 	"""
-	初始化湖泊噪声生成器
-	配置用于湖泊分布计算的Simplex噪声参数
+	初始化噪声管理器
+	创建并配置所有需要的噪声生成器
 	"""
-	lake_noise = FastNoiseLite.new()
-	lake_noise.seed = world_seed  # 使用全局种子确保一致性
-	lake_noise.frequency = Config.LakeConfig.NOISE_SCALE
-	lake_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	lake_noise.fractal_octaves = Config.LakeConfig.NOISE_OCTAVES
-	lake_noise.fractal_gain = Config.LakeConfig.NOISE_PERSISTENCE
-
-func setup_forest_noise():
-	"""
-	初始化森林噪声生成器系统
-	创建双层噪声：基础分布噪声和密度减少噪声，完全匹配C++逻辑
-	"""
-	# 第一层噪声 - 森林基础分布
-	forest_noise_1 = FastNoiseLite.new()
-	forest_noise_1.seed = world_seed  # 使用全局种子
-	forest_noise_1.frequency = Config.ForestConfig.NOISE_1_SCALE
-	forest_noise_1.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	forest_noise_1.fractal_octaves = Config.ForestConfig.NOISE_1_OCTAVES
-	forest_noise_1.fractal_gain = Config.ForestConfig.NOISE_1_PERSISTENCE
-	
-	# 第二层噪声 - 森林密度减少效果
-	forest_noise_2 = FastNoiseLite.new()
-	forest_noise_2.seed = world_seed  # 使用稍微不同的种子避免完全相同
-	forest_noise_2.frequency = Config.ForestConfig.NOISE_2_SCALE
-	forest_noise_2.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	forest_noise_2.fractal_octaves = Config.ForestConfig.NOISE_2_OCTAVES
-	forest_noise_2.fractal_gain = Config.ForestConfig.NOISE_2_PERSISTENCE
-
-func setup_floodplain_noise():
-	"""
-	初始化洪泛平原噪声生成器系统
-	用于沼泽生成，完全匹配C++版本的om_noise_layer_floodplain逻辑
-	"""
-	floodplain_noise = FastNoiseLite.new()
-	floodplain_noise.seed = world_seed# 使用独特的种子
-	floodplain_noise.frequency = Config.SwampConfig.FLOODPLAIN_NOISE_SCALE
-	floodplain_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	floodplain_noise.fractal_octaves = Config.SwampConfig.FLOODPLAIN_NOISE_OCTAVES
-	floodplain_noise.fractal_gain = Config.SwampConfig.FLOODPLAIN_NOISE_PERSISTENCE
+	noise_manager = NoiseManager.new()
+	add_child(noise_manager)
+	noise_manager.initialize(world_seed)
+	print("Noise manager setup completed")
 
 # ============================================================================
 # 区块生成管理系统
@@ -1117,7 +1077,7 @@ func _get_north_south_most_points_cpp_style(lake_points: Array[Vector2i]) -> Arr
 func _is_lake_noise_at(world_pos: Vector2i) -> bool:
 	"""检查指定世界坐标是否应该生成湖泊（基于噪声计算）"""
 	# 获取原始噪声值（范围-1到1）
-	var noise_value = lake_noise.get_noise_2d(world_pos.x, world_pos.y)
+	var noise_value = noise_manager.get_lake_value(world_pos.x, world_pos.y)
 	# 规范化到0-1范围
 	noise_value = (noise_value + 1.0) * 0.5
 	# 应用幂运算使分布更稀疏、边缘更清晰
@@ -1473,14 +1433,14 @@ func forest_noise_at(world_pos: Vector2i) -> float:
 	使用双层噪声系统：基础分布噪声减去密度减少噪声
 	"""
 	# 第一层噪声 - 森林基础分布
-	var r = forest_noise_1.get_noise_2d(world_pos.x, world_pos.y)
+	var r = noise_manager.get_forest_base_value(world_pos.x, world_pos.y)
 	# 将噪声值从[-1,1]范围映射到[0,1]范围
 	r = (r + 1.0) * 0.5
 	# 应用幂运算增强对比度
 	r = pow(r, Config.ForestConfig.NOISE_1_POWER)
 	
 	# 第二层噪声 - 森林密度减少效果
-	var d = forest_noise_2.get_noise_2d(world_pos.x, world_pos.y)
+	var d = noise_manager.get_forest_density_value(world_pos.x, world_pos.y)
 	# 将噪声值从[-1,1]范围映射到[0,1]范围
 	d = (d + 1.0) * 0.5
 	# 应用幂运算
@@ -1495,7 +1455,7 @@ func floodplain_noise_at(world_pos: Vector2i) -> float:
 	使用单层噪声生成，通过幂运算增强对比度
 	"""
 	# 获取基础噪声值
-	var r = floodplain_noise.get_noise_2d(world_pos.x, world_pos.y)
+	var r = noise_manager.get_floodplain_value(world_pos.x, world_pos.y)
 	# 将噪声值从[-1,1]范围映射到[0,1]范围
 	r = (r + 1.0) * 0.5
 	# 应用幂运算增强对比度，使小值更小，大值相对更大
