@@ -213,6 +213,7 @@ func setup_tilemap():
 	"""
 	初始化TileMapLayer渲染系统
 	创建地形图层和玩家图层，设置对应的TileSet资源
+	支持使用外部 .tres 文件或程序生成的 TileSet
 	"""
 	# 创建地形渲染图层
 	tile_map_layer = TileMapLayer.new()
@@ -224,19 +225,67 @@ func setup_tilemap():
 	player_tile_map_layer.name = "PlayerLayer"
 	add_child(player_tile_map_layer)
 	
-	# 为地形图层创建并分配TileSet
-	tile_set_resource = create_terrain_tileset()
+	# 为地形图层设置 TileSet（根据配置选择外部资源或程序生成）
+	if Config.RenderConfig.USE_EXTERNAL_TILESET:
+		tile_set_resource = load_external_terrain_tileset()
+	else:
+		tile_set_resource = create_terrain_tileset()
 	tile_map_layer.tile_set = tile_set_resource
 	
-	# 为玩家图层创建专用的TileSet（只包含玩家标记）
-	var player_tileset = create_player_tileset()
+	# 为玩家图层设置 TileSet（根据配置选择外部资源或程序生成）
+	var player_tileset: TileSet
+	if Config.RenderConfig.USE_EXTERNAL_TILESET:
+		player_tileset = load_external_player_tileset()
+	else:
+		player_tileset = create_player_tileset()
 	player_tile_map_layer.tile_set = player_tileset
 	
 	print("TileMapLayers created with tile_size: ", tile_set_resource.tile_size)
+	print("Using external tileset: ", Config.RenderConfig.USE_EXTERNAL_TILESET)
 	print("Terrain layer position: ", tile_map_layer.position)
 	print("Player layer position: ", player_tile_map_layer.position)
 	
 	render_dirty = true  # 标记需要重新渲染
+
+func load_external_terrain_tileset() -> TileSet:
+	"""
+	加载外部地形 TileSet 资源文件
+	如果加载失败，则回退到程序生成的 TileSet
+	"""
+	var tileset_path = Config.RenderConfig.TERRAIN_TILESET_PATH
+	
+	if ResourceLoader.exists(tileset_path):
+		var loaded_tileset = load(tileset_path) as TileSet
+		if loaded_tileset != null:
+			print("外部地形 TileSet 加载成功: ", tileset_path)
+			return loaded_tileset
+		else:
+			print("警告: 无法将资源作为 TileSet 加载: ", tileset_path)
+	else:
+		print("警告: 外部地形 TileSet 文件不存在: ", tileset_path)
+	
+	print("回退到程序生成的地形 TileSet")
+	return create_terrain_tileset()
+
+func load_external_player_tileset() -> TileSet:
+	"""
+	加载外部玩家标记 TileSet 资源文件
+	如果加载失败，则回退到程序生成的 TileSet
+	"""
+	var tileset_path = Config.RenderConfig.PLAYER_TILESET_PATH
+	
+	if ResourceLoader.exists(tileset_path):
+		var loaded_tileset = load(tileset_path) as TileSet
+		if loaded_tileset != null:
+			print("外部玩家 TileSet 加载成功: ", tileset_path)
+			return loaded_tileset
+		else:
+			print("警告: 无法将资源作为 TileSet 加载: ", tileset_path)
+	else:
+		print("警告: 外部玩家 TileSet 文件不存在: ", tileset_path)
+	
+	print("回退到程序生成的玩家 TileSet")
+	return create_player_tileset()
 
 func create_terrain_tileset() -> TileSet:
 	"""

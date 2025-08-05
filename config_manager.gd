@@ -12,6 +12,11 @@ class RenderConfig:
 	const TILE_SIZE: int = 16  ## 每个瓦片的像素大小
 	const CHUNK_SIZE: int = 180  ## 地图区块大小（每个区块的格子数量）
 	const BORDER_THRESHOLD: int = 11  ## 触发新区块生成的边界阈值
+	
+	## TileSet 资源配置
+	const USE_EXTERNAL_TILESET: bool = false  ## 是否使用外部 TileSet 资源
+	const TERRAIN_TILESET_PATH: String = "res://assets/tilesets/terrain_tileset.tres"  ## 地形 TileSet 路径
+	const PLAYER_TILESET_PATH: String = "res://assets/tilesets/player_tileset.tres"  ## 玩家标记 TileSet 路径
 
 # ============================================================================
 # 地形系统配置
