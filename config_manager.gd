@@ -149,8 +149,8 @@ class SwampConfig:
 # ============================================================================
 class CityConfig:
 	## 城市间距和大小参数（对应C++中的配置选项）
-	const CITY_SPACING: int = 4               ## 城市间距配置值（降低以增加城市数量）
-	const CITY_SIZE: int = 16                 ## 基础城市大小
+	const CITY_SPACING: int = 3               ## 城市间距配置值（降低以增加城市数量）
+	const CITY_SIZE: int = 12                 ## 基础城市大小
 	const OVERMAP_MAXIMUM_URBANITY: int = 8  ## 最大城市化程度乘数
 	
 	## 城市化程度增长参数（对应C++的城市化方向增长）
