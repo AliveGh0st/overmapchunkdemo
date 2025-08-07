@@ -73,7 +73,7 @@ func _create_all_noise_instances():
 		Config.ForestConfig.NOISE_1_OCTAVES,
 		Config.ForestConfig.NOISE_1_PERSISTENCE,
 		FastNoiseLite.TYPE_SIMPLEX,
-		1000  # 使用不同的种子偏移
+		0  # 使用不同的种子偏移
 	)
 	_create_noise_instance(NoiseType.FOREST_BASE, forest_base_config)
 	
@@ -83,7 +83,7 @@ func _create_all_noise_instances():
 		Config.ForestConfig.NOISE_2_OCTAVES,
 		Config.ForestConfig.NOISE_2_PERSISTENCE,
 		FastNoiseLite.TYPE_SIMPLEX,
-		2000  # 使用不同的种子偏移
+		0  # 使用不同的种子偏移
 	)
 	_create_noise_instance(NoiseType.FOREST_DENSITY, forest_density_config)
 	
@@ -93,7 +93,7 @@ func _create_all_noise_instances():
 		Config.SwampConfig.FLOODPLAIN_NOISE_OCTAVES,
 		Config.SwampConfig.FLOODPLAIN_NOISE_PERSISTENCE,
 		FastNoiseLite.TYPE_SIMPLEX,
-		3000  # 使用不同的种子偏移
+		0  # 使用不同的种子偏移
 	)
 	_create_noise_instance(NoiseType.FLOODPLAIN, floodplain_config)
 

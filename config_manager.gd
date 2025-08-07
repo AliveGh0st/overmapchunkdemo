@@ -14,8 +14,8 @@ class RenderConfig:
 	const BORDER_THRESHOLD: int = 11  ## 触发新区块生成的边界阈值
 	
 	## TileSet 资源配置
-	const USE_EXTERNAL_TILESET: bool = false  ## 是否使用外部 TileSet 资源
-	const TERRAIN_TILESET_PATH: String = "res://assets/tilesets/terrain_tileset.tres"  ## 地形 TileSet 路径
+	const USE_EXTERNAL_TILESET: bool = true  ## 推荐使用外部 TileSet 资源
+	const TERRAIN_TILESET_PATH: String = "res://assets/tilesets/overmap.tres"  ## 地形 TileSet 路径
 	const PLAYER_TILESET_PATH: String = "res://assets/tilesets/player_tileset.tres"  ## 玩家标记 TileSet 路径
 
 # ============================================================================
@@ -34,18 +34,19 @@ class TerrainConfig:
 	const TYPE_ROAD: int = 8           ## 道路地形
 	const TYPE_CITY_TILE: int = 9      ## 城市瓦片地形
 	
-	## 地形类型到TileSet瓦片ID的映射
-	const TERRAIN_TO_TILE_ID: Dictionary = {
-		TYPE_EMPTY: -1,
-		TYPE_LAND: 0,
-		TYPE_RIVER: 1,
-		TYPE_LAKE_SURFACE: 2,
-		TYPE_LAKE_SHORE: 3,
-		TYPE_FOREST: 4,
-		TYPE_FOREST_THICK: 5,
-		TYPE_SWAMP: 6,
-		TYPE_ROAD: 7,
-		TYPE_CITY_TILE: 8
+	## 地形类型到TileSet瓦片坐标的映射
+	## 每个地形类型对应一个Vector2i坐标，表示在TileSet中的位置
+	const TERRAIN_TO_ATLAS_COORDS: Dictionary = {
+		TYPE_EMPTY: Vector2i(-1, -1),    # 空地形，不渲染
+		TYPE_LAND: Vector2i(0, 0),       # 田野瓦片坐标
+		TYPE_RIVER: Vector2i(1, 0),      # 河流瓦片坐标
+		TYPE_LAKE_SURFACE: Vector2i(2, 0), # 湖泊表面瓦片坐标
+		TYPE_LAKE_SHORE: Vector2i(0, 1), # 湖岸瓦片坐标
+		TYPE_FOREST: Vector2i(1, 1),     # 森林瓦片坐标
+		TYPE_FOREST_THICK: Vector2i(2, 1), # 密林瓦片坐标
+		TYPE_SWAMP: Vector2i(0, 2),      # 沼泽瓦片坐标
+		TYPE_ROAD: Vector2i(1, 2),       # 道路瓦片坐标
+		TYPE_CITY_TILE: Vector2i(2, 2)   # 城市瓦片坐标
 	}
 
 # ============================================================================
@@ -345,9 +346,9 @@ func get_terrain_color(terrain_type: int) -> Color:
 		TerrainConfig.TYPE_CITY_TILE: return ColorConfig.CITY_COLOR
 		_: return Color.WHITE
 
-## 获取地形类型对应的瓦片ID
-func get_tile_id_for_terrain(terrain_type: int) -> int:
-	return TerrainConfig.TERRAIN_TO_TILE_ID.get(terrain_type, -1)
+## 获取地形类型对应的瓦片坐标
+func get_atlas_coords_for_terrain(terrain_type: int) -> Vector2i:
+	return TerrainConfig.TERRAIN_TO_ATLAS_COORDS.get(terrain_type, Vector2i(-1, -1))
 
 # ============================================================================
 # 调试和诊断

@@ -4,9 +4,6 @@ class_name OvermapRenderer
 ## 连续地图overmap渲染器
 ## 负责动态生成和渲染无限大地图，包括地形生成、TileMap渲染和玩家标记管理
 
-# 预加载噪声管理器类
-const NoiseManager = preload("res://noise_manager.gd")
-
 # ============================================================================
 # 核心地图设置
 # ============================================================================
@@ -284,120 +281,64 @@ func load_external_player_tileset() -> TileSet:
 
 func create_terrain_tileset() -> TileSet:
 	"""
-	创建地形TileSet资源
-	为每种地形类型生成对应的纹理瓦片，包括特殊的图形设计
+	创建简单的地形TileSet资源（备用方案）
+	当外部TileSet不可用时，创建一个基本的单色瓦片集
+	推荐使用外部TileSet资源以获得更好的视觉效果
 	"""
+	print("警告: 正在使用简化的程序生成TileSet，建议使用外部TileSet资源")
+	
 	var tileset = TileSet.new()
-	# 设置瓦片大小与游戏世界格子大小匹配
 	tileset.tile_size = Vector2i(Config.RenderConfig.TILE_SIZE, Config.RenderConfig.TILE_SIZE)
 	
-	# 创建TileSetAtlasSource用于管理瓦片纹理
 	var atlas_source = TileSetAtlasSource.new()
 	
-	# 定义各地形类型对应的颜色
-	var terrain_colors = [
-		Config.ColorConfig.TERRAIN_COLOR,          # Config.TerrainConfig.TYPE_LAND = 0 (田野)
-		Config.ColorConfig.RIVER_COLOR,            # Config.TerrainConfig.TYPE_RIVER = 1 (河流)
-		Config.ColorConfig.LAKE_SURFACE_COLOR,     # Config.TerrainConfig.TYPE_LAKE_SURFACE = 2 (湖泊表面)
-		Config.ColorConfig.LAKE_SHORE_COLOR,       # Config.TerrainConfig.TYPE_LAKE_SHORE = 3 (湖岸)
-		Config.ColorConfig.FOREST_COLOR,           # Config.TerrainConfig.TYPE_FOREST = 4 (森林)
-		Config.ColorConfig.FOREST_THICK_COLOR,     # Config.TerrainConfig.TYPE_FOREST_THICK = 5 (密林)
-		Config.ColorConfig.SWAMP_COLOR,            # Config.TerrainConfig.TYPE_SWAMP = 6 (沼泽)
-		Config.ColorConfig.ROAD_COLOR,             # Config.TerrainConfig.TYPE_ROAD = 7 (道路)
-		Config.ColorConfig.CITY_COLOR              # Config.TerrainConfig.TYPE_CITY_TILE = 8 (城市)
+	# 创建一个简单的4x3网格布局的图集
+	var tile_pixel_size = Config.RenderConfig.TILE_SIZE
+	var atlas_width = 4 * tile_pixel_size
+	var atlas_height = 3 * tile_pixel_size
+	var atlas_image = Image.create(atlas_width, atlas_height, false, Image.FORMAT_RGBA8)
+	
+	# 填充透明背景
+	atlas_image.fill(Color(0, 0, 0, 0))
+	
+	# 为每种地形类型在对应坐标位置绘制简单的颜色块
+	var terrain_mappings = [
+		[Config.TerrainConfig.TYPE_LAND, Vector2i(0, 0), Config.ColorConfig.TERRAIN_COLOR],
+		[Config.TerrainConfig.TYPE_RIVER, Vector2i(1, 0), Config.ColorConfig.RIVER_COLOR],
+		[Config.TerrainConfig.TYPE_LAKE_SURFACE, Vector2i(2, 0), Config.ColorConfig.LAKE_SURFACE_COLOR],
+		[Config.TerrainConfig.TYPE_LAKE_SHORE, Vector2i(3, 0), Config.ColorConfig.LAKE_SHORE_COLOR],
+		[Config.TerrainConfig.TYPE_FOREST, Vector2i(0, 1), Config.ColorConfig.FOREST_COLOR],
+		[Config.TerrainConfig.TYPE_FOREST_THICK, Vector2i(1, 1), Config.ColorConfig.FOREST_THICK_COLOR],
+		[Config.TerrainConfig.TYPE_SWAMP, Vector2i(2, 1), Config.ColorConfig.SWAMP_COLOR],
+		[Config.TerrainConfig.TYPE_ROAD, Vector2i(3, 1), Config.ColorConfig.ROAD_COLOR],
+		[Config.TerrainConfig.TYPE_CITY_TILE, Vector2i(0, 2), Config.ColorConfig.CITY_COLOR]
 	]
 	
-	# 创建纹理图集，每个瓦片Config.RenderConfig.TILE_SIZE×Config.RenderConfig.TILE_SIZE像素
-	var tile_pixel_size = Config.RenderConfig.TILE_SIZE
-	var atlas_image = Image.create(tile_pixel_size, tile_pixel_size * terrain_colors.size(), false, Image.FORMAT_RGBA8)
-	
-	# 为每种地形类型生成对应的纹理
-	for i in range(terrain_colors.size()):
-		var color = terrain_colors[i]
-		var start_y = i * tile_pixel_size
+	# 绘制每个地形类型的简单颜色块
+	for mapping in terrain_mappings:
+		var terrain_type = mapping[0]
+		var grid_pos = mapping[1]
+		var color = mapping[2]
 		
-		# 初始化为透明背景
+		var start_x = grid_pos.x * tile_pixel_size
+		var start_y = grid_pos.y * tile_pixel_size
+		
+		# 绘制简单的颜色块
 		for x in range(tile_pixel_size):
 			for y in range(tile_pixel_size):
-				atlas_image.set_pixel(x, start_y + y, Color(0, 0, 0, 0))
+				atlas_image.set_pixel(start_x + x, start_y + y, color)
 		
-		# 为田野地形绘制特殊的草地图案（三条竖线）
-		if i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_LAND]:
-			var grass_color = Config.ColorConfig.TERRAIN_COLOR
-			var mid_x = int(float(tile_pixel_size) / 2.0)
-			var bottom_y = tile_pixel_size - 1
-
-			# 中间竖线（较长）
-			var top_y_middle = int(float(tile_pixel_size) * 2.0 / 4.0)
-			if mid_x >= 0 and mid_x < tile_pixel_size:
-				for y_grass in range(top_y_middle, bottom_y + 1):
-					if y_grass >=0 and y_grass < tile_pixel_size:
-						atlas_image.set_pixel(mid_x, start_y + y_grass, grass_color)
-
-			# 两侧竖线（较短）
-			var top_y_sides = int(float(tile_pixel_size) * 3.0 / 4.0)
-			var side_x_offset = int(float(tile_pixel_size) / 4.0)
-			
-			var left_x = mid_x - side_x_offset
-			var right_x = mid_x + side_x_offset
-
-			# 左侧竖线
-			if left_x >= 0 and left_x < tile_pixel_size:
-				for y_grass in range(top_y_sides, bottom_y + 1):
-					if y_grass >=0 and y_grass < tile_pixel_size:
-						atlas_image.set_pixel(left_x, start_y + y_grass, grass_color)
-
-			# 右侧竖线
-			if right_x >= 0 and right_x < tile_pixel_size:
-				for y_grass in range(top_y_sides, bottom_y + 1):
-					if y_grass >=0 and y_grass < tile_pixel_size:
-						atlas_image.set_pixel(right_x, start_y + y_grass, grass_color)
-		
-		# 为森林和密林绘制树形图案
-		elif i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_FOREST] or i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_FOREST_THICK]:
-			_draw_tree_shape(atlas_image, start_y, tile_pixel_size, color, i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_FOREST_THICK])
-		
-		# 为沼泽绘制特殊的水草混合图案
-		elif i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_SWAMP]:
-			_draw_swamp_shape(atlas_image, start_y, tile_pixel_size, color)
-		
-		# 为道路绘制特殊的十字路口图案
-		elif i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_ROAD]:
-			_draw_road_shape(atlas_image, start_y, tile_pixel_size, color)
-		
-		# 为城市绘制建筑图案
-		elif i == Config.TerrainConfig.TERRAIN_TO_TILE_ID[Config.TerrainConfig.TYPE_CITY_TILE]:
-			_draw_city_shape(atlas_image, start_y, tile_pixel_size, color)
-		
-		else:
-			# 其他地形类型绘制圆形图案
-			var center_x = float(tile_pixel_size) / 2.0
-			var center_y = float(tile_pixel_size) / 2.0
-			var radius = float(tile_pixel_size) / 2.0 - 0.5  # 稍微小一点避免边缘问题
-			
-			# 绘制填充圆形
-			for x_circle in range(tile_pixel_size):
-				for y_circle in range(tile_pixel_size):
-					var dx = float(x_circle) - center_x
-					var dy = float(y_circle) - center_y
-					var distance = sqrt(dx * dx + dy * dy)
-					
-					if distance <= radius:
-						atlas_image.set_pixel(x_circle, start_y + y_circle, color)
+		# 在TileSetAtlasSource中创建对应的瓦片
+		var atlas_coords = Config.TerrainConfig.TERRAIN_TO_ATLAS_COORDS.get(terrain_type, Vector2i(-1, -1))
+		if atlas_coords.x >= 0 and atlas_coords.y >= 0:
+			atlas_source.create_tile(atlas_coords)
 	
-	# 创建纹理并设置到atlas_source
+	# 设置纹理到atlas_source
 	var atlas_texture = ImageTexture.new()
 	atlas_texture.set_image(atlas_image)
 	atlas_source.texture = atlas_texture
 	atlas_source.texture_region_size = Vector2i(tile_pixel_size, tile_pixel_size)
 	
-	# 为每种地形添加瓦片到atlas_source
-	for i in range(terrain_colors.size()):
-		var atlas_coords = Vector2i(0, i)
-		atlas_source.create_tile(atlas_coords)
-		var _tile_data = atlas_source.get_tile_data(atlas_coords, 0)
-		# 可以在这里设置瓦片的额外属性（如碰撞、导航等）
-		
 	tileset.add_source(atlas_source, 0)
 	return tileset
 
@@ -1390,10 +1331,10 @@ func set_tile_at_world_pos(world_pos: Vector2i, terrain_type: int):
 	if terrain_type == Config.TerrainConfig.TYPE_EMPTY:
 		tile_map_layer.erase_cell(world_pos)
 	else:
-		var tile_id = Config.TerrainConfig.TERRAIN_TO_TILE_ID.get(terrain_type, 0)
-		# 确保tile_id在有效范围内
-		if tile_id >= 0:
-			tile_map_layer.set_cell(world_pos, 0, Vector2i(0, tile_id))
+		var atlas_coords = Config.TerrainConfig.TERRAIN_TO_ATLAS_COORDS.get(terrain_type, Vector2i(0, 0))
+		# 确保坐标有效（不是空地形的-1,-1坐标）
+		if atlas_coords.x >= 0 and atlas_coords.y >= 0:
+			tile_map_layer.set_cell(world_pos, 0, atlas_coords)
 
 func update_player_marker(world_x: int, world_y: int):
 	"""
@@ -1589,36 +1530,6 @@ func place_swamps(chunk_coord: Vector2i):
 	if Config.SwampConfig.ENABLE_PERFORMANCE_LOGGING and (_river_count > 10 or swamp_generated > 5):  # 只在有意义的情况下输出
 		print("沼泽生成统计 - 区块 ", chunk_coord, ": 河流数=", _river_count, 
 			  ", 森林检查=", forest_checked, ", 沼泽生成=", swamp_generated)
-
-func get_closest_points_first(center: Vector2i, radius: int) -> Array[Vector2i]:
-	"""
-	获取指定中心点周围指定半径内的所有点，按距离排序
-	完全匹配C++版本的closest_points_first函数逻辑
-	
-	⚠️ 警告：这个函数性能很差，包含不必要的排序操作
-	已被 _add_flood_buffer_fast() 替代，仅保留用于兼容性
-	"""
-	var points: Array[Vector2i] = []
-	
-	# 生成正方形区域内的所有点
-	for x in range(center.x - radius, center.x + radius + 1):
-		for y in range(center.y - radius, center.y + radius + 1):
-			var point = Vector2i(x, y)
-			var distance_sq = (point.x - center.x) * (point.x - center.x) + (point.y - center.y) * (point.y - center.y)
-			
-			# 只包含圆形范围内的点
-			if distance_sq <= radius * radius:
-				points.append(point)
-	
-	# 按距离排序（虽然在这个应用中顺序可能不重要，但保持与C++版本一致）
-	# ⚠️ 性能瓶颈：对于半径15的圆形区域，需要排序~700个点，复杂度O(n log n)
-	points.sort_custom(func(a, b): 
-		var dist_a = (a.x - center.x) * (a.x - center.x) + (a.y - center.y) * (a.y - center.y)
-		var dist_b = (b.x - center.x) * (b.x - center.x) + (b.y - center.y) * (b.y - center.y)
-		return dist_a < dist_b
-	)
-	
-	return points
 
 func _draw_tree_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, color: Color, is_thick: bool):
 	"""
