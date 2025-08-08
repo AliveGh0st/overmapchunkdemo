@@ -96,5 +96,6 @@ language_server/remote_port=6005
 
 [rendering]
 
+textures/canvas_textures/default_texture_filter=0
 2d/snap/snap_2d_vertices_to_pixel=true
 driver/driver_name="Forward+"
