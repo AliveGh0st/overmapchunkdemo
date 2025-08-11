@@ -14,9 +14,7 @@ class RenderConfig:
 	const BORDER_THRESHOLD: int = 11  ## 触发新区块生成的边界阈值
 	
 	## TileSet 资源配置
-	const USE_EXTERNAL_TILESET: bool = true  ## 推荐使用外部 TileSet 资源
 	const TERRAIN_TILESET_PATH: String = "res://assets/tilesets/overmap.tres"  ## 地形 TileSet 路径
-	const PLAYER_TILESET_PATH: String = "res://assets/tilesets/player_tileset.tres"  ## 玩家标记 TileSet 路径
 
 # ============================================================================
 # 地形系统配置
@@ -50,20 +48,11 @@ class TerrainConfig:
 	}
 
 # ============================================================================
-# 颜色方案配置
+# 颜色方案配置（仅用于玩家标记）
 # ============================================================================
 class ColorConfig:
-	## 基于CDDA终端风格的颜色配置
-	const TERRAIN_COLOR: Color = Color.YELLOW
+	## 玩家标记颜色配置
 	const PLAYER_COLOR: Color = Color.RED
-	const RIVER_COLOR: Color = Color.BLUE
-	const LAKE_SURFACE_COLOR: Color = Color.BLUE
-	const LAKE_SHORE_COLOR: Color = Color.DARK_GRAY
-	const FOREST_COLOR: Color = Color.DARK_GREEN
-	const FOREST_THICK_COLOR: Color = Color.FOREST_GREEN
-	const SWAMP_COLOR: Color = Color(0.4, 0.6, 0.3, 1.0)
-	const ROAD_COLOR: Color = Color.GRAY       ## 道路颜色
-	const CITY_COLOR: Color = Color.WHITE      ## 城市建筑颜色
 
 # ============================================================================
 # 玩家配置
@@ -332,19 +321,6 @@ func get_chunk_size() -> int:
 
 func get_player_color() -> Color:
 	return ColorConfig.PLAYER_COLOR
-
-func get_terrain_color(terrain_type: int) -> Color:
-	match terrain_type:
-		TerrainConfig.TYPE_LAND: return ColorConfig.TERRAIN_COLOR
-		TerrainConfig.TYPE_RIVER: return ColorConfig.RIVER_COLOR
-		TerrainConfig.TYPE_LAKE_SURFACE: return ColorConfig.LAKE_SURFACE_COLOR
-		TerrainConfig.TYPE_LAKE_SHORE: return ColorConfig.LAKE_SHORE_COLOR
-		TerrainConfig.TYPE_FOREST: return ColorConfig.FOREST_COLOR
-		TerrainConfig.TYPE_FOREST_THICK: return ColorConfig.FOREST_THICK_COLOR
-		TerrainConfig.TYPE_SWAMP: return ColorConfig.SWAMP_COLOR
-		TerrainConfig.TYPE_ROAD: return ColorConfig.ROAD_COLOR
-		TerrainConfig.TYPE_CITY_TILE: return ColorConfig.CITY_COLOR
-		_: return Color.WHITE
 
 ## 获取地形类型对应的瓦片坐标
 func get_atlas_coords_for_terrain(terrain_type: int) -> Vector2i:

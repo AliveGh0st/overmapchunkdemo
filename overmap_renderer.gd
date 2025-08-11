@@ -205,7 +205,7 @@ func setup_tilemap():
 	"""
 	初始化TileMapLayer渲染系统
 	创建地形图层和玩家图层，设置对应的TileSet资源
-	支持使用外部 .tres 文件或程序生成的 TileSet
+	地形图层使用外部 .tres 文件，玩家图层使用程序生成的 TileSet
 	"""
 	# 创建地形渲染图层
 	tile_map_layer = TileMapLayer.new()
@@ -217,23 +217,17 @@ func setup_tilemap():
 	player_tile_map_layer.name = "PlayerLayer"
 	add_child(player_tile_map_layer)
 	
-	# 为地形图层设置 TileSet（根据配置选择外部资源或程序生成）
-	if Config.RenderConfig.USE_EXTERNAL_TILESET:
-		tile_set_resource = load_external_terrain_tileset()
-	else:
-		tile_set_resource = create_terrain_tileset()
+	# 为地形图层设置外部 TileSet
+	tile_set_resource = load_external_terrain_tileset()
 	tile_map_layer.tile_set = tile_set_resource
 	
-	# 为玩家图层设置 TileSet（根据配置选择外部资源或程序生成）
-	var player_tileset: TileSet
-	if Config.RenderConfig.USE_EXTERNAL_TILESET:
-		player_tileset = load_external_player_tileset()
-	else:
-		player_tileset = create_player_tileset()
+	# 为玩家图层设置程序生成的 TileSet
+	var player_tileset: TileSet = create_player_tileset()
 	player_tile_map_layer.tile_set = player_tileset
 	
 	print("TileMapLayers created with tile_size: ", tile_set_resource.tile_size)
-	print("Using external tileset: ", Config.RenderConfig.USE_EXTERNAL_TILESET)
+	print("Using external terrain tileset from: ", Config.RenderConfig.TERRAIN_TILESET_PATH)
+	print("Using procedural player tileset")
 	print("Terrain layer position: ", tile_map_layer.position)
 	print("Player layer position: ", player_tile_map_layer.position)
 	
@@ -242,7 +236,7 @@ func setup_tilemap():
 func load_external_terrain_tileset() -> TileSet:
 	"""
 	加载外部地形 TileSet 资源文件
-	如果加载失败，则回退到程序生成的 TileSet
+	这是唯一的地形 TileSet 加载方式，必须成功加载
 	"""
 	var tileset_path = Config.RenderConfig.TERRAIN_TILESET_PATH
 	
@@ -252,95 +246,15 @@ func load_external_terrain_tileset() -> TileSet:
 			print("外部地形 TileSet 加载成功: ", tileset_path)
 			return loaded_tileset
 		else:
-			print("警告: 无法将资源作为 TileSet 加载: ", tileset_path)
+			push_error("无法将资源作为 TileSet 加载: " + tileset_path)
 	else:
-		print("警告: 外部地形 TileSet 文件不存在: ", tileset_path)
+		push_error("外部地形 TileSet 文件不存在: " + tileset_path)
 	
-	print("回退到程序生成的地形 TileSet")
-	return create_terrain_tileset()
-
-func load_external_player_tileset() -> TileSet:
-	"""
-	加载外部玩家标记 TileSet 资源文件
-	如果加载失败，则回退到程序生成的 TileSet
-	"""
-	var tileset_path = Config.RenderConfig.PLAYER_TILESET_PATH
-	
-	if ResourceLoader.exists(tileset_path):
-		var loaded_tileset = load(tileset_path) as TileSet
-		if loaded_tileset != null:
-			print("外部玩家 TileSet 加载成功: ", tileset_path)
-			return loaded_tileset
-		else:
-			print("警告: 无法将资源作为 TileSet 加载: ", tileset_path)
-	else:
-		print("警告: 外部玩家 TileSet 文件不存在: ", tileset_path)
-	
-	print("回退到程序生成的玩家 TileSet")
-	return create_player_tileset()
-
-func create_terrain_tileset() -> TileSet:
-	"""
-	创建简单的地形TileSet资源（备用方案）
-	当外部TileSet不可用时，创建一个基本的单色瓦片集
-	推荐使用外部TileSet资源以获得更好的视觉效果
-	"""
-	print("警告: 正在使用简化的程序生成TileSet，建议使用外部TileSet资源")
-	
-	var tileset = TileSet.new()
-	tileset.tile_size = Vector2i(Config.RenderConfig.TILE_SIZE, Config.RenderConfig.TILE_SIZE)
-	
-	var atlas_source = TileSetAtlasSource.new()
-	
-	# 创建一个简单的4x3网格布局的图集
-	var tile_pixel_size = Config.RenderConfig.TILE_SIZE
-	var atlas_width = 4 * tile_pixel_size
-	var atlas_height = 3 * tile_pixel_size
-	var atlas_image = Image.create(atlas_width, atlas_height, false, Image.FORMAT_RGBA8)
-	
-	# 填充透明背景
-	atlas_image.fill(Color(0, 0, 0, 0))
-	
-	# 为每种地形类型在对应坐标位置绘制简单的颜色块
-	var terrain_mappings = [
-		[Config.TerrainConfig.TYPE_LAND, Vector2i(0, 0), Config.ColorConfig.TERRAIN_COLOR],
-		[Config.TerrainConfig.TYPE_RIVER, Vector2i(1, 0), Config.ColorConfig.RIVER_COLOR],
-		[Config.TerrainConfig.TYPE_LAKE_SURFACE, Vector2i(2, 0), Config.ColorConfig.LAKE_SURFACE_COLOR],
-		[Config.TerrainConfig.TYPE_LAKE_SHORE, Vector2i(3, 0), Config.ColorConfig.LAKE_SHORE_COLOR],
-		[Config.TerrainConfig.TYPE_FOREST, Vector2i(0, 1), Config.ColorConfig.FOREST_COLOR],
-		[Config.TerrainConfig.TYPE_FOREST_THICK, Vector2i(1, 1), Config.ColorConfig.FOREST_THICK_COLOR],
-		[Config.TerrainConfig.TYPE_SWAMP, Vector2i(2, 1), Config.ColorConfig.SWAMP_COLOR],
-		[Config.TerrainConfig.TYPE_ROAD, Vector2i(3, 1), Config.ColorConfig.ROAD_COLOR],
-		[Config.TerrainConfig.TYPE_CITY_TILE, Vector2i(0, 2), Config.ColorConfig.CITY_COLOR]
-	]
-	
-	# 绘制每个地形类型的简单颜色块
-	for mapping in terrain_mappings:
-		var terrain_type = mapping[0]
-		var grid_pos = mapping[1]
-		var color = mapping[2]
-		
-		var start_x = grid_pos.x * tile_pixel_size
-		var start_y = grid_pos.y * tile_pixel_size
-		
-		# 绘制简单的颜色块
-		for x in range(tile_pixel_size):
-			for y in range(tile_pixel_size):
-				atlas_image.set_pixel(start_x + x, start_y + y, color)
-		
-		# 在TileSetAtlasSource中创建对应的瓦片
-		var atlas_coords = Config.TerrainConfig.TERRAIN_TO_ATLAS_COORDS.get(terrain_type, Vector2i(-1, -1))
-		if atlas_coords.x >= 0 and atlas_coords.y >= 0:
-			atlas_source.create_tile(atlas_coords)
-	
-	# 设置纹理到atlas_source
-	var atlas_texture = ImageTexture.new()
-	atlas_texture.set_image(atlas_image)
-	atlas_source.texture = atlas_texture
-	atlas_source.texture_region_size = Vector2i(tile_pixel_size, tile_pixel_size)
-	
-	tileset.add_source(atlas_source, 0)
-	return tileset
+	# 如果外部 TileSet 加载失败，创建一个空的 TileSet 避免崩溃
+	push_error("地形 TileSet 加载失败，请检查文件路径和格式")
+	var emergency_tileset = TileSet.new()
+	emergency_tileset.tile_size = Vector2i(Config.RenderConfig.TILE_SIZE, Config.RenderConfig.TILE_SIZE)
+	return emergency_tileset
 
 func create_player_tileset() -> TileSet:
 	"""
@@ -1531,99 +1445,6 @@ func place_swamps(chunk_coord: Vector2i):
 		print("沼泽生成统计 - 区块 ", chunk_coord, ": 河流数=", _river_count, 
 			  ", 森林检查=", forest_checked, ", 沼泽生成=", swamp_generated)
 
-func _draw_tree_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, color: Color, is_thick: bool):
-	"""
-	绘制树形图案到纹理图集
-	使用多个圆形叠加模拟树冠效果，密林比普通森林更茂密
-	"""
-	var center_x = int(float(tile_pixel_size) / 2.0)
-	var center_y = int(float(tile_pixel_size) / 2.0)
-	
-	# 树干参数
-	var trunk_width = 2.0
-	var trunk_height = int(float(tile_pixel_size) * 0.5)  # 树干高度为瓦片的50%
-	var trunk_start_y = tile_pixel_size - trunk_height
-	
-	# 树冠参数 - 根据森林类型调整大小
-	var main_crown_radius = int(float(tile_pixel_size) * 0.3)  # 主树冠半径
-	var small_crown_radius = int(float(tile_pixel_size) * 0.2)  # 小树冠半径
-	
-	if is_thick:
-		# 密林的树冠更大更茂密
-		main_crown_radius = int(float(tile_pixel_size) * 0.35)
-		small_crown_radius = int(float(tile_pixel_size) * 0.25)
-	
-	# 绘制主树冠（中心圆形）
-	for x in range(tile_pixel_size):
-		for y in range(tile_pixel_size):
-			var dx = float(x) - float(center_x)
-			var dy = float(y) - float(center_y - 1)  # 主树冠稍微向上偏移
-			var distance = sqrt(dx * dx + dy * dy)
-			
-			if distance <= main_crown_radius:
-				atlas_image.set_pixel(x, start_y + y, color)
-	
-	# 绘制左上角小树冠
-	var left_crown_x = center_x - int(main_crown_radius * 0.6)
-	var left_crown_y = center_y - int(main_crown_radius * 0.4) - 1
-	for x in range(tile_pixel_size):
-		for y in range(tile_pixel_size):
-			var dx = float(x) - float(left_crown_x)
-			var dy = float(y) - float(left_crown_y)
-			var distance = sqrt(dx * dx + dy * dy)
-			
-			if distance <= small_crown_radius:
-				atlas_image.set_pixel(x, start_y + y, color)
-	
-	# 绘制右上角小树冠
-	var right_crown_x = center_x + int(main_crown_radius * 0.6)
-	var right_crown_y = center_y - int(main_crown_radius * 0.4) - 1
-	for x in range(tile_pixel_size):
-		for y in range(tile_pixel_size):
-			var dx = float(x) - float(right_crown_x)
-			var dy = float(y) - float(right_crown_y)
-			var distance = sqrt(dx * dx + dy * dy)
-			
-			if distance <= small_crown_radius:
-				atlas_image.set_pixel(x, start_y + y, color)
-	
-	# 密林额外的小树冠（更茂密的效果）
-	if is_thick:
-		# 左下角小树冠
-		var left_bottom_x = center_x - int(main_crown_radius * 0.4)
-		var left_bottom_y = center_y + int(main_crown_radius * 0.3)
-		for x in range(tile_pixel_size):
-			for y in range(tile_pixel_size):
-				var dx = float(x) - float(left_bottom_x)
-				var dy = float(y) - float(left_bottom_y)
-				var distance = sqrt(dx * dx + dy * dy)
-				
-				if distance <= small_crown_radius * 0.8:
-					atlas_image.set_pixel(x, start_y + y, color)
-		
-		# 右下角小树冠
-		var right_bottom_x = center_x + int(main_crown_radius * 0.4)
-		var right_bottom_y = center_y + int(main_crown_radius * 0.3)
-		for x in range(tile_pixel_size):
-			for y in range(tile_pixel_size):
-				var dx = float(x) - float(right_bottom_x)
-				var dy = float(y) - float(right_bottom_y)
-				var distance = sqrt(dx * dx + dy * dy)
-				
-				if distance <= small_crown_radius * 0.8:
-					atlas_image.set_pixel(x, start_y + y, color)
-	
-	# 绘制树干（矩形，棕黑色）
-	var trunk_left = int(center_x - trunk_width / 2.0)
-	var trunk_right = int(center_x + trunk_width / 2.0)
-	var trunk_color = Color(0.4, 0.2, 0.1, 1.0)  # 棕黑色树干
-	
-	for x in range(trunk_left, trunk_right + 1):
-		if x >= 0 and x < tile_pixel_size:
-			for y in range(trunk_start_y, tile_pixel_size):
-				if y >= 0 and y < tile_pixel_size:
-					atlas_image.set_pixel(x, start_y + y, trunk_color)
-
 # ============================================================================
 # 调试信息系统
 # ============================================================================
@@ -1797,68 +1618,6 @@ func _find_nearest_city(world_pos: Vector2i) -> City:
 			nearest_city = city
 	
 	return nearest_city
-
-func _draw_swamp_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, color: Color):
-	"""
-	绘制沼泽地形图案到纹理图集
-	使用水面基底加上稀疏的草丛和小树点缀，模拟森林沼泽的外观
-	"""
-	var center_x = int(float(tile_pixel_size) / 2.0)
-	var center_y = int(float(tile_pixel_size) / 2.0)
-	
-	# 水面颜色（比基础沼泽色稍暗）
-	var water_color = Color(color.r * 0.7, color.g * 0.8, color.b * 0.9, color.a)
-	# 草丛颜色（比基础沼泽色稍亮）
-	var grass_color = Color(color.r * 1.2, color.g * 1.1, color.b * 0.8, color.a)
-	# 小树/灌木颜色（更深的绿色）
-	var bush_color = Color(color.r * 0.6, color.g * 0.9, color.b * 0.5, color.a)
-	
-	# 首先绘制水面基底（填充整个瓦片）
-	for x in range(tile_pixel_size):
-		for y in range(tile_pixel_size):
-			atlas_image.set_pixel(x, start_y + y, water_color)
-	
-	# 绘制几个小草丛（随机分布的小圆形）
-	var grass_spots = [
-		Vector2i(center_x - 4, center_y - 3),
-		Vector2i(center_x + 3, center_y - 4),
-		Vector2i(center_x - 2, center_y + 3),
-		Vector2i(center_x + 4, center_y + 2),
-		Vector2i(center_x - 1, center_y - 1)
-	]
-	
-	for spot in grass_spots:
-		var radius = 1.5
-		for x in range(tile_pixel_size):
-			for y in range(tile_pixel_size):
-				var dx = float(x) - float(spot.x)
-				var dy = float(y) - float(spot.y)
-				var distance = sqrt(dx * dx + dy * dy)
-				
-				if distance <= radius and x >= 0 and x < tile_pixel_size and y >= 0 and y < tile_pixel_size:
-					atlas_image.set_pixel(x, start_y + y, grass_color)
-	
-	# 绘制一些小灌木/树丛（更小的树形）
-	var bush_spots = [
-		Vector2i(center_x - 3, center_y + 1),
-		Vector2i(center_x + 2, center_y - 2)
-	]
-	
-	for spot in bush_spots:
-		var crown_radius = 1.8
-		# 绘制小树冠
-		for x in range(tile_pixel_size):
-			for y in range(tile_pixel_size):
-				var dx = float(x) - float(spot.x)
-				var dy = float(y) - float(spot.y - 1)  # 稍微向上偏移
-				var distance = sqrt(dx * dx + dy * dy)
-				
-				if distance <= crown_radius and x >= 0 and x < tile_pixel_size and y >= 0 and y < tile_pixel_size:
-					atlas_image.set_pixel(x, start_y + y, bush_color)
-		
-		# 绘制小树干
-		if spot.x >= 0 and spot.x < tile_pixel_size and spot.y + 1 >= 0 and spot.y + 1 < tile_pixel_size:
-			atlas_image.set_pixel(spot.x, start_y + spot.y + 1, Color.SADDLE_BROWN)
 
 func _add_flood_buffer_fast(center: Vector2i, radius: int, floodplain: Dictionary, 
 						   world_start_x: int, world_end_x: int, world_start_y: int, world_end_y: int):
@@ -2607,46 +2366,6 @@ func _get_perpendicular_directions(direction: int) -> Array[int]:
 		0, 2: return [1, 3]  # 北/南 -> 东/西
 		1, 3: return [0, 2]  # 东/西 -> 北/南
 		_: return [0, 1, 2, 3]
-
-func _draw_road_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, color: Color):
-	"""
-	绘制道路（十字路口）图案到纹理图集
-	绘制水平和垂直线条形成十字形
-	"""
-	var center_x = int(float(tile_pixel_size) / 2.0)
-	var center_y = int(float(tile_pixel_size) / 2.0)
-	var road_width = max(2, int(float(tile_pixel_size) / 8.0))  # 道路宽度，先转浮点数再除法
-	
-	# 绘制水平道路
-	for x in range(tile_pixel_size):
-		for y in range(center_y - road_width / 2, center_y + road_width / 2 + 1):
-			if y >= 0 and y < tile_pixel_size:
-				atlas_image.set_pixel(x, start_y + y, color)
-	
-	# 绘制垂直道路
-	for y in range(tile_pixel_size):
-		for x in range(center_x - road_width / 2, center_x + road_width / 2 + 1):
-			if x >= 0 and x < tile_pixel_size:
-				atlas_image.set_pixel(x, start_y + y, color)
-
-func _draw_city_shape(atlas_image: Image, start_y: int, tile_pixel_size: int, color: Color):
-	"""
-	绘制城市建筑图案到纹理图集
-	绘制简单的方形建筑轮廓
-	"""
-	var building_size = int(tile_pixel_size * 0.8)  # 建筑大小
-	var offset = int(float(tile_pixel_size - building_size) / 2.0)  # 偏移量，先转浮点数
-	
-	# 绘制建筑轮廓
-	for x in range(offset, offset + building_size):
-		for y in range(offset, offset + building_size):
-			if x >= 0 and x < tile_pixel_size and y >= 0 and y < tile_pixel_size:
-				# 只绘制边框
-				if x == offset or x == offset + building_size - 1 or y == offset or y == offset + building_size - 1:
-					atlas_image.set_pixel(x, start_y + y, color)
-				# 或者填充整个建筑（可选）
-				else:
-					atlas_image.set_pixel(x, start_y + y, Color(color.r * 0.7, color.g * 0.7, color.b * 0.7, color.a))
 
 # ============================================================================
 # 新功能演示和测试函数
