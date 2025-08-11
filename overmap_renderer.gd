@@ -417,8 +417,6 @@ func generate_chunk_at(chunk_coord: Vector2i):
 			
 			terrain_data[Vector2i(world_x, world_y)] = Config.TerrainConfig.TYPE_LAND
 	
-	# print("Generated terrain data for chunk ", chunk_coord, " - terrain_data size: ", terrain_data.size())
-	
 	# 按顺序生成各种地物
 
 	# 1. 计算当前区块的森林密度（在生成森林之前）
@@ -427,9 +425,8 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	# 1.5. 计算当前区块的城市化程度（在生成城市之前）
 	calculate_urbanity(chunk_coord)
 
-	# 2. 生成河流（避开将来的湖泊位置）
-	if Config.RiverConfig.DENSITY_PARAM > 0.0:
-		place_rivers(chunk_coord)
+	# 2. 生成河流
+	place_rivers(chunk_coord)
 	
 	# 2. 生成湖泊（可能会覆盖部分河流）
 	place_lakes(chunk_coord)
@@ -2366,106 +2363,3 @@ func _get_perpendicular_directions(direction: int) -> Array[int]:
 		0, 2: return [1, 3]  # 北/南 -> 东/西
 		1, 3: return [0, 2]  # 东/西 -> 北/南
 		_: return [0, 1, 2, 3]
-
-# ============================================================================
-# 新功能演示和测试函数
-# ============================================================================
-
-func test_new_building_system(chunk_coord: Vector2i):
-	"""
-	测试新的建筑放置系统功能
-	演示如何使用新实现的C++函数
-	"""
-	print("=== 测试新建筑系统功能 ===")
-	
-	# 测试建筑类型获取
-	var building_types = Config.CityConfig.get_building_types()
-	print("可用建筑类型：", building_types.keys())
-	
-	# 测试建筑选择逻辑
-	var test_positions = [
-		{"dist": 2, "size": 10},  # 应该选择商店
-		{"dist": 7, "size": 20},  # 应该选择公园
-		{"dist": 15, "size": 30}  # 应该选择房屋
-	]
-	
-	for test_case in test_positions:
-		var building = _pick_random_building_to_place(test_case.dist, test_case.size, {})
-		print("距离 ", test_case.dist, "，城市大小 ", test_case.size, " -> 选择建筑：", building.id)
-	
-	# 测试特殊建筑放置
-	var special_building = {
-		"id": "test_mall",
-		"globally_unique": true,
-		"required_locations": [
-			{"offset": Vector2i.ZERO, "allowed_terrains": [Config.TerrainConfig.TYPE_LAND]},
-			{"offset": Vector2i(1, 0), "allowed_terrains": [Config.TerrainConfig.TYPE_LAND]}
-		],
-		"locations": [
-			{"offset": Vector2i.ZERO, "terrain_type": Config.TerrainConfig.TYPE_CITY_TILE},
-			{"offset": Vector2i(1, 0), "terrain_type": Config.TerrainConfig.TYPE_CITY_TILE}
-		]
-	}
-	
-	var test_pos = Vector2i(10, 10)
-	var can_place = _can_place_special(special_building, test_pos, 0, chunk_coord)
-	print("可以在位置 ", test_pos, " 放置特殊建筑：", can_place)
-	
-	if can_place:
-		var dummy_city = City.new(test_pos, chunk_coord, 20)
-		var placed_positions = _place_special(special_building, test_pos, 0, dummy_city, chunk_coord)
-		print("成功放置特殊建筑，占用位置：", placed_positions)
-	
-	# 测试直线路径生成
-	var path = _straight_path(Vector2i(5, 5), 1, 5)  # 向东5步
-	print("从(5,5)向东生成5步路径：", path)
-	
-	# 测试正态分布
-	var normal_samples = []
-	for i in range(5):
-		normal_samples.append(_normal_roll(10.0, 2.0))
-	print("正态分布采样（均值10，标准差2）：", normal_samples)
-	
-	print("=== 新建筑系统测试完成 ===")
-
-func demo_advanced_city_generation(chunk_coord: Vector2i):
-	"""
-	演示高级城市生成功能
-	"""
-	print("=== 演示高级城市生成 ===")
-	
-	# 创建一个测试城市
-	var test_city = City.new(Vector2i(50, 50), chunk_coord, 25)
-	
-	# 演示不同距离的建筑分布
-	print("城市中心建筑分布演示：")
-	for distance in [1, 3, 5, 8, 12]:
-		var building = _pick_random_building_to_place(distance, test_city.size, {})
-		print("  距离中心 ", distance, " 格：", building.id)
-	
-	# 演示独特建筑约束
-	print("\n独特建筑约束演示：")
-	var _unique_building = {
-		"id": "unique_supermarket", 
-		"city_unique": true, 
-		"size": Vector2i(3, 3)
-	}
-	
-	# 第一次放置
-	placed_unique_buildings.clear()
-	var first_attempt = _pick_random_building_to_place(3, test_city.size, placed_unique_buildings)
-	if first_attempt.get("city_unique", false):
-		placed_unique_buildings[first_attempt.id] = true
-		print("  首次放置独特建筑：", first_attempt.id)
-	
-	# 第二次尝试放置相同建筑（应该被拒绝）
-	var second_attempt = _pick_random_building_to_place(3, test_city.size, placed_unique_buildings)
-	print("  再次尝试放置，得到：", second_attempt.id, 
-		  " (应该与首次不同)" if second_attempt.id != first_attempt.id else " (相同，可能是随机选择)")
-	
-	print("=== 高级城市生成演示完成 ===")
-
-# 自动测试函数说明
-# 如需测试新功能，可在_ready()函数中调用：
-# test_new_building_system(Vector2i.ZERO)
-# demo_advanced_city_generation(Vector2i.ZERO)
