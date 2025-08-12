@@ -1617,7 +1617,9 @@ func _get_building_display_name(building_id: String) -> String:
 		"park_small": "小公园",
 		"park_medium": "中型公园",
 		"park_large": "大型公园",
-		"test_mall": "测试购物中心"
+		"test_mall": "测试购物中心",
+		# 特殊道路特征
+		"road_manhole_feature": "下水道井盖"
 	}
 	
 	return name_map.get(building_id, building_id.capitalize())
@@ -1796,12 +1798,22 @@ func _build_city_street(street_start: Vector2i, cs: int, direction: int, city: C
 	"""
 	完全仿照C++版本的build_city_street函数
 	递归生成复杂的城市街道网络，包括分支街道和建筑放置
+	
+	参数对应关系：
+	- street_start: 对应C++ const point_om_omt &p
+	- cs: 对应C++ int cs (城市大小)
+	- direction: 对应C++ om_direction::type dir
+	- city: 对应C++ const city &town
+	- local_placed_unique_buildings: 对应C++ std::unordered_set<overmap_special_id> &placed_unique_buildings
+	- chunk_coord: GDScript特有的区块坐标
+	- block_width: 对应C++ int block_width (默认值2)
 	"""
 	var c = cs
 	var croad = cs
 	
+	# 完全匹配C++版本的错误检查：if( dir == om_direction::type::invalid )
 	if direction < 0 or direction > 3:
-		print("Invalid road direction: ", direction)
+		print("Invalid road direction: ", direction)  # 对应C++ debugmsg
 		return
 	
 	# 规划街道路径（对应C++的lay_out_street）
@@ -1813,9 +1825,9 @@ func _build_city_street(street_start: Vector2i, cs: int, direction: int, city: C
 	# 建造实际的街道（对应C++的build_connection）
 	_build_connection(street_path, chunk_coord)
 	
-	# 沿着既定方向增长，产生子道路并放置建筑
-	# 跳过第一个节点（起始点）
-	var new_width = 3 if block_width == 2 else 2  # 交替宽窄街区
+	# 沿着既定方向增长，产生子道路并放置建筑  
+	# 跳过第一个节点（起始点）- 完全匹配C++的std::next()逻辑
+	var new_width = randi_range(3, 5) if block_width == 2 else 2  # 完全匹配C++的随机范围逻辑
 	
 	for i in range(1, street_path.size()):
 		c -= 1
@@ -1839,11 +1851,16 @@ func _build_city_street(street_start: Vector2i, cs: int, direction: int, city: C
 			_build_city_street(current_pos, right, _turn_right(direction), city, 
 							  local_placed_unique_buildings, chunk_coord, new_width)
 			
-			# 有时在交叉路口放置特殊地物（如下水道井盖）
+			# 匹配C++版本的特殊道路检测和井盖放置逻辑
+			# 在十字交叉路口有50%概率放置井盖（对应C++ one_in(2)）
 			if _one_in(2):
-				var _world_pos = _local_to_world(current_pos, chunk_coord)
-				# 可以在这里添加特殊路面标记
-				# ter_set(_world_pos, special_road_variant)
+				var world_pos = _local_to_world(current_pos, chunk_coord)
+				var terrain_type = terrain_data.get(world_pos, Config.TerrainConfig.TYPE_EMPTY)
+				# 检查是否为道路类型（对应C++ oter->type_is(oter_type_id("road"))）
+				if terrain_type == Config.TerrainConfig.TYPE_ROAD:
+					# 可以在这里添加特殊路面标记，如井盖
+					# 对应C++ ter_set(rp, oter_road_nesw_manhole.id())
+					_add_special_road_feature(current_pos, "manhole", chunk_coord)
 		
 		# 在街道两侧放置建筑
 		if not _one_in(Config.CityConfig.BUILDING_CHANCE):
@@ -1889,10 +1906,12 @@ func _lay_out_street(source: Vector2i, direction: int, length: int, chunk_coord:
 		var world_pos = _local_to_world(pos, chunk_coord)
 		var terrain_type = terrain_data.get(world_pos, Config.TerrainConfig.TYPE_EMPTY)
 		
-		# 不能在河流、湖泊等特殊地形上建造道路
-		if terrain_type == Config.TerrainConfig.TYPE_RIVER or \
-		   terrain_type == Config.TerrainConfig.TYPE_LAKE_SURFACE or \
-		   terrain_type == Config.TerrainConfig.TYPE_LAKE_SHORE:
+		# 完全匹配C++版本的地形检查逻辑
+		# C++: ter_id->is_river() || ter_id->is_ravine() || ter_id->is_ravine_edge() || !connection.pick_subtype_for( ter_id )
+		# 只能在空地或已有道路上建造道路，不能在其他地形上建造
+		if terrain_type != Config.TerrainConfig.TYPE_EMPTY and \
+		   terrain_type != Config.TerrainConfig.TYPE_LAND and \
+		   terrain_type != Config.TerrainConfig.TYPE_ROAD:
 			break
 		
 		# 检查道路冲突（防止道路过于密集）
@@ -1962,6 +1981,12 @@ func _place_building(road_pos: Vector2i, direction: int, city: City,
 	
 	var building_world_pos = _local_to_world(building_pos, chunk_coord)
 	
+	# 首先检查建筑位置的地形是否合适
+	var building_terrain = terrain_data.get(building_world_pos, Config.TerrainConfig.TYPE_EMPTY)
+	if building_terrain != Config.TerrainConfig.TYPE_EMPTY and building_terrain != Config.TerrainConfig.TYPE_LAND:
+		# 建筑位置地形不合适（可能是森林、河流等），跳过建筑放置
+		return
+	
 	# 计算到城市中心的距离（使用三角距离，对应C++的trig_dist）
 	var actual_distance = sqrt(_square_dist(building_world_pos, city.pos))
 	var town_dist = int((actual_distance * 100) / max(city.size, 1))
@@ -1993,10 +2018,21 @@ func _place_building(road_pos: Vector2i, direction: int, city: City,
 			
 			break  # 成功放置，退出重试循环
 
+func _add_special_road_feature(pos: Vector2i, feature_type: String, chunk_coord: Vector2i):
+	"""
+	在道路上添加特殊地物，对应C++版本的ter_set特殊道路变种
+	简化实现：直接标记为特殊道路，不与建筑放置系统冲突
+	"""
+	var world_pos = _local_to_world(pos, chunk_coord)
+	# 根据特征类型设置特殊道路标记
+	match feature_type:
+		"manhole":
+			# 简单地标记这个位置有井盖，使用特殊前缀避免与建筑ID冲突
+			overmap_special_placements[world_pos] = "road_manhole_feature"
+		_:
+			pass  # 其他特殊道路特征
+
 func _can_place_building_special(building_type: Dictionary, pos: Vector2i, _direction: int, chunk_coord: Vector2i) -> bool:
-	"""
-	检查是否可以放置指定建筑类型，简化版的can_place_special
-	"""
 	var world_pos = _local_to_world(pos, chunk_coord)
 	var terrain_type = terrain_data.get(world_pos, Config.TerrainConfig.TYPE_EMPTY)
 	
