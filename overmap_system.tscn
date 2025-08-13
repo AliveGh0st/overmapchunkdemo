@@ -22,13 +22,13 @@ mouse_filter = 2
 color = Color(0, 0, 0, 1)
 
 [node name="OvermapRenderer" type="Node2D" parent="."]
+skew = -0.411898
 script = ExtResource("1_renderer")
 
 [node name="Player" type="CharacterBody2D" parent="."]
 script = ExtResource("2_player")
 
 [node name="Camera2D" type="Camera2D" parent="Player"]
-zoom = Vector2(1.5, 1.5)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
 shape = SubResource("RectangleShape2D_1")

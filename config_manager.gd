@@ -50,23 +50,58 @@ class TerrainConfig:
 	const TYPE_FOREST: int = 5
 	const TYPE_FOREST_THICK: int = 6
 	const TYPE_SWAMP: int = 7
-	const TYPE_ROAD: int = 8           ## 道路地形
+	const TYPE_ROAD: int = 8           ## 道路地形（包括线性道路）
 	const TYPE_CITY_TILE: int = 9      ## 城市瓦片地形
 	
-	## 地形类型到TileSet瓦片坐标的映射
+	## 基础地形类型到TileSet瓦片坐标的映射
 	## 每个地形类型对应一个Vector2i坐标，表示在TileSet中的位置
+	## 注意：道路地形将使用线性地形系统，这里的坐标仅作为默认后备
 	const TERRAIN_TO_ATLAS_COORDS: Dictionary = {
 		TYPE_EMPTY: Vector2i(-1, -1),    # 空地形，不渲染
 		TYPE_LAND: Vector2i(0, 0),       # 田野瓦片坐标
-		TYPE_RIVER: Vector2i(1, 0),      # 河流瓦片坐标
+		TYPE_RIVER: Vector2i(1, 0),      # 河流瓦片坐标（非线性）
 		TYPE_LAKE_SURFACE: Vector2i(2, 0), # 湖泊表面瓦片坐标
 		TYPE_LAKE_SHORE: Vector2i(0, 1), # 湖岸瓦片坐标
 		TYPE_FOREST: Vector2i(1, 1),     # 森林瓦片坐标
 		TYPE_FOREST_THICK: Vector2i(2, 1), # 密林瓦片坐标
 		TYPE_SWAMP: Vector2i(0, 2),      # 沼泽瓦片坐标
-		TYPE_ROAD: Vector2i(1, 2),       # 道路瓦片坐标
+		TYPE_ROAD: Vector2i(1, 2),       # 道路默认坐标（线性系统会覆盖）
 		TYPE_CITY_TILE: Vector2i(2, 2)   # 城市瓦片坐标
 	}
+	
+	## 线性地形系统配置
+	## 16种线性地形类型的定义，只保留实际使用的字段
+	const LINEAR_TERRAIN_DEFINITIONS = [
+		{"id": "road_isolated", "symbol": "┼", "atlas": Vector2i(0, 3)},    # 0  ---- 孤立
+		{"id": "road_end_south", "symbol": "╵", "atlas": Vector2i(1, 3)},   # 1  ---n 南端点
+		{"id": "road_end_west", "symbol": "╴", "atlas": Vector2i(2, 3)},    # 2  --e- 西端点  
+		{"id": "road_ne", "symbol": "└", "atlas": Vector2i(3, 3)},          # 3  --en 东北弯道
+		{"id": "road_end_north", "symbol": "╷", "atlas": Vector2i(0, 4)},   # 4  -s-- 北端点
+		{"id": "road_ns", "symbol": "│", "atlas": Vector2i(1, 4)},          # 5  -s-n 南北直线
+		{"id": "road_es", "symbol": "┌", "atlas": Vector2i(2, 4)},          # 6  -se- 东南弯道
+		{"id": "road_nes", "symbol": "├", "atlas": Vector2i(3, 4)},         # 7  -sen 东南北T型
+		{"id": "road_end_east", "symbol": "╶", "atlas": Vector2i(0, 5)},    # 8  w--- 东端点
+		{"id": "road_wn", "symbol": "┘", "atlas": Vector2i(1, 5)},          # 9  w--n 西北弯道
+		{"id": "road_ew", "symbol": "─", "atlas": Vector2i(2, 5)},          # 10 w-e- 东西直线
+		{"id": "road_new", "symbol": "┴", "atlas": Vector2i(3, 5)},         # 11 w-en 东西北T型
+		{"id": "road_sw", "symbol": "┐", "atlas": Vector2i(0, 6)},          # 12 ws-- 西南弯道
+		{"id": "road_nsw", "symbol": "┤", "atlas": Vector2i(1, 6)},         # 13 ws-n 南北西T型
+		{"id": "road_esw", "symbol": "┬", "atlas": Vector2i(2, 6)},         # 14 wse- 东南西T型
+		{"id": "road_nesw", "symbol": "┼", "atlas": Vector2i(3, 6)}         # 15 wsen 十字路口
+	]
+	
+	## 快速获取线性地形的图集坐标
+	static func get_linear_terrain_atlas_coords(line_value: int) -> Vector2i:
+		if line_value >= 0 and line_value < LINEAR_TERRAIN_DEFINITIONS.size():
+			return LINEAR_TERRAIN_DEFINITIONS[line_value]["atlas"]
+		return Vector2i(-1, -1)
+	
+	## 获取线性地形的显示名称
+	static func get_linear_terrain_name(line_value: int) -> String:
+		if line_value >= 0 and line_value < LINEAR_TERRAIN_DEFINITIONS.size():
+			var terrain_info = LINEAR_TERRAIN_DEFINITIONS[line_value]
+			return terrain_info["id"] + " (" + terrain_info["symbol"] + ")"
+		return "未知线性地形"
 
 # ============================================================================
 # 颜色方案配置（仅用于玩家标记）

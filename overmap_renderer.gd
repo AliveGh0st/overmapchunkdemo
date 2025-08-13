@@ -1259,11 +1259,21 @@ func render_terrain_in_area(area: Rect2i):
 			set_tile_at_world_pos(world_coord, terrain_type)
 
 func set_tile_at_world_pos(world_pos: Vector2i, terrain_type: int):
-	"""在世界坐标位置设置对应的地形瓦片"""
+	"""在世界坐标位置设置对应的地形瓦片，支持线性地形系统"""
 	if terrain_type == Config.TerrainConfig.TYPE_EMPTY:
 		tile_map_layer.erase_cell(world_pos)
 	else:
-		var atlas_coords = Config.TerrainConfig.TERRAIN_TO_ATLAS_COORDS.get(terrain_type, Vector2i(0, 0))
+		var atlas_coords: Vector2i
+		
+		# 检查是否为线性道路地形
+		var linear_info = get_linear_terrain_info(world_pos)
+		if not linear_info.is_empty() and terrain_type == Config.TerrainConfig.TYPE_ROAD:
+			# 使用线性地形的图集坐标
+			atlas_coords = linear_info.get("atlas_coords", Vector2i(0, 0))
+		else:
+			# 使用常规地形映射
+			atlas_coords = Config.TerrainConfig.TERRAIN_TO_ATLAS_COORDS.get(terrain_type, Vector2i(0, 0))
+		
 		# 确保坐标有效（不是空地形的-1,-1坐标）
 		if atlas_coords.x >= 0 and atlas_coords.y >= 0:
 			tile_map_layer.set_cell(world_pos, 0, atlas_coords)
@@ -1468,10 +1478,18 @@ func place_swamps(chunk_coord: Vector2i):
 # ============================================================================
 
 func get_terrain_type(world_x: int, world_y: int) -> String:
-	"""获取指定世界坐标的地形类型描述"""
+	"""获取指定世界坐标的地形类型描述，支持线性地形系统"""
 	var world_coord = Vector2i(world_x, world_y)
 	var terrain_type = terrain_data.get(world_coord, Config.TerrainConfig.TYPE_EMPTY)
 	
+	# 检查是否为线性道路地形
+	if terrain_type == Config.TerrainConfig.TYPE_ROAD:
+		var linear_info = get_linear_terrain_info(world_coord)
+		if not linear_info.is_empty():
+			var line_value = linear_info.get("line_value", -1)
+			return Config.TerrainConfig.get_linear_terrain_name(line_value)
+	
+	# 常规地形类型
 	match terrain_type:
 		Config.TerrainConfig.TYPE_EMPTY:
 			return "空地"
@@ -1512,9 +1530,18 @@ func get_simple_info() -> String:
 		if city.pos_om == current_chunk:
 			cities_in_current_chunk += 1
 
-	return "位置: (%d, %d)\n区块: (%d, %d)\n地形: %s\n森林密度: %.3f\n城市化程度: %d\n总城市数: %d\n本区块城市: %d" % [
+	# 检查当前位置的线性地形信息
+	var current_world_coord = Vector2i(world_grid_x, world_grid_y)
+	var linear_info = get_linear_terrain_info(current_world_coord)
+	var linear_terrain_desc = ""
+	if not linear_info.is_empty():
+		var line_value = linear_info.get("line_value", -1)
+		var atlas_coords = linear_info.get("atlas_coords", Vector2i(-1, -1))
+		linear_terrain_desc = "\n线性地形: 值=%d, 图集=(%d,%d)" % [line_value, atlas_coords.x, atlas_coords.y]
+
+	return "位置: (%d, %d)\n区块: (%d, %d)\n地形: %s%s\n森林密度: %.3f\n城市化程度: %d\n总城市数: %d\n本区块城市: %d\n线性地形总数: %d" % [
 		world_grid_x, world_grid_y, current_chunk.x, current_chunk.y, 
-		get_terrain_type(world_grid_x, world_grid_y), forest_size_adjust, urbanity, cities.size(), cities_in_current_chunk
+		get_terrain_type(world_grid_x, world_grid_y), linear_terrain_desc, forest_size_adjust, urbanity, cities.size(), cities_in_current_chunk, linear_terrain_info.size()
 	]
 
 func get_building_info_at_position(world_grid_pos: Vector2i) -> Dictionary:
@@ -1952,20 +1979,160 @@ func _lay_out_street(source: Vector2i, direction: int, length: int, chunk_coord:
 	
 	return path
 
+# ============================================================================
+# 线性地形系统变量
+# ============================================================================
+var linear_terrain_info: Dictionary = {}  ## 存储线性地形信息，键为世界坐标Vector2i，值为线性地形数据
+
+# ============================================================================
+# 线性地形系统函数
+# ============================================================================
+
+func _store_linear_terrain_info(world_pos: Vector2i, line_value: int, atlas_coords: Vector2i):
+	"""
+	存储线性地形信息，用于后续渲染和查询
+	"""
+	linear_terrain_info[world_pos] = {
+		"line_value": line_value,
+		"atlas_coords": atlas_coords,
+		"terrain_type": "road_linear"
+	}
+
+func get_linear_terrain_info(world_pos: Vector2i) -> Dictionary:
+	"""
+	获取指定位置的线性地形信息
+	"""
+	return linear_terrain_info.get(world_pos, {})
+
 func _build_connection(path: Array[Vector2i], chunk_coord: Vector2i):
 	"""
-	建造实际的道路连接，对应C++的build_connection函数
+	建造实际的道路连接，完全匹配C++的build_connection函数逻辑
+	使用线性地形系统来设置正确的街道类型（直线、弯道、T型路口、十字路口等）
 	"""
 	if path.is_empty():
 		return
 	
+	# 线性地形系统常量，完全匹配C++的om_lines命名空间
+	var _LINES_SIZE = 16  # 对应om_lines::size
+	var LINES_INVALID = 0  # 对应om_lines::invalid
+	
+	# 方向常量，匹配C++的om_direction
+	var DIR_NORTH = 0
+	var DIR_EAST = 1  
+	var DIR_SOUTH = 2
+	var DIR_WEST = 3
+	var DIR_INVALID = -1
+	
+	# 线性地形操作函数
+	var set_segment = func(line: int, dir: int) -> int:
+		if dir == DIR_INVALID:
+			return line
+		return line | (1 << dir)
+	
+	var has_segment = func(line: int, dir: int) -> bool:
+		if dir == DIR_INVALID:
+			return false
+		return bool(line & (1 << dir))
+	
+	var is_straight = func(line: int) -> bool:
+		return line in [1, 2, 4, 5, 8, 10]  # 匹配C++的is_straight逻辑
+	
+	# 检查地形是否为道路的函数
+	var is_road_terrain = func(world_pos: Vector2i) -> bool:
+		var terrain_type = terrain_data.get(world_pos, Config.TerrainConfig.TYPE_EMPTY)
+		return terrain_type == Config.TerrainConfig.TYPE_ROAD
+	
+	# 获取道路地形的线性值
+	var get_road_line = func(world_pos: Vector2i) -> int:
+		# 从线性地形信息中获取当前的线性值
+		var terrain_info = linear_terrain_info.get(world_pos, {})
+		return terrain_info.get("line_value", 0)
+	
+	# 设置线性地形的函数
+	var set_linear_terrain = func(world_pos: Vector2i, line_value: int):
+		# 设置基础道路地形
+		terrain_data[world_pos] = Config.TerrainConfig.TYPE_ROAD
+		
+		# 设置对应的tileset坐标
+		if line_value >= 0 and line_value < Config.TerrainConfig.LINEAR_TERRAIN_DEFINITIONS.size():
+			# 使用配置管理器中的地形类型映射到tileset坐标
+			var atlas_coords = Config.TerrainConfig.get_linear_terrain_atlas_coords(line_value)
+			if atlas_coords != Vector2i(-1, -1):
+				# 存储线性地形信息用于渲染
+				_store_linear_terrain_info(world_pos, line_value, atlas_coords)
+	
+	# 主要的连接建造循环，完全匹配C++逻辑
+	var prev_dir = DIR_INVALID
+	
 	for i in range(path.size()):
-		var pos = path[i]
+		var pos = path[i] 
 		var world_pos = _local_to_world(pos, chunk_coord)
 		
-		# 设置道路地形
-		terrain_data[world_pos] = Config.TerrainConfig.TYPE_ROAD
+		# 计算当前节点的方向
+		var new_dir = DIR_INVALID
+		if i < path.size() - 1:
+			var next_pos = path[i + 1]
+			var diff = next_pos - pos
+			if diff == Vector2i(0, -1):
+				new_dir = DIR_NORTH
+			elif diff == Vector2i(1, 0):
+				new_dir = DIR_EAST
+			elif diff == Vector2i(0, 1):
+				new_dir = DIR_SOUTH
+			elif diff == Vector2i(-1, 0):
+				new_dir = DIR_WEST
+		
+		# 初始化线段值（如果已经是道路则获取现有值，否则为0）
+		var new_line = get_road_line.call(world_pos)
+		
+		# 设置当前方向的线段
+		if new_dir != DIR_INVALID:
+			new_line = set_segment.call(new_line, new_dir)
+		
+		# 设置前一个方向的相反线段
+		if prev_dir != DIR_INVALID:
+			new_line = set_segment.call(new_line, _opposite_direction(prev_dir))
+		
+		# 检查所有相邻位置并建立连接
+		for dir in [DIR_NORTH, DIR_EAST, DIR_SOUTH, DIR_WEST]:
+			var neighbor_pos = world_pos + _direction_to_vector(dir)
+			
+			# 检查邻居是否在有效范围内
+			var neighbor_chunk = Vector2i(
+				int(floor(float(neighbor_pos.x) / Config.RenderConfig.CHUNK_SIZE)),
+				int(floor(float(neighbor_pos.y) / Config.RenderConfig.CHUNK_SIZE))
+			)
+			
+			# 只处理已生成区块内的邻居
+			if generated_chunks.has(neighbor_chunk):
+				if is_road_terrain.call(neighbor_pos):
+					var near_line = get_road_line.call(neighbor_pos)
+					
+					# 检查是否可以连接
+					if is_straight.call(near_line) or has_segment.call(near_line, new_dir):
+						# 建立双向连接
+						var new_near_line = set_segment.call(near_line, _opposite_direction(dir))
+						set_linear_terrain.call(neighbor_pos, new_near_line)
+						new_line = set_segment.call(new_line, dir)
+			else:
+				# 对于路径的起点和终点，自动连接到边界外
+				if i == 0 or i == path.size() - 1:
+					new_line = set_segment.call(new_line, dir)
+		
+		# 验证线段值的有效性
+		if new_line == LINES_INVALID:
+			print("Invalid line configuration for connection at: ", world_pos)
+			# 设置为基础道路
+			terrain_data[world_pos] = Config.TerrainConfig.TYPE_ROAD
+		else:
+			# 设置最终的线性地形
+			set_linear_terrain.call(world_pos, new_line)
+		
+		# 标记为城市瓦片
 		city_tiles[pos] = true
+		
+		# 更新前一个方向
+		prev_dir = new_dir
 
 func _place_building(road_pos: Vector2i, direction: int, city: City, 
 					local_placed_unique_buildings: Dictionary, chunk_coord: Vector2i):
