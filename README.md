@@ -1,5 +1,5 @@
 # OvermapChunkDemo - 程序化地形生成系统
-
+<img width="1338" height="500" alt="image" src="https://github.com/user-attachments/assets/3fa4f288-a674-42a0-bc60-f6d0958c1fa9" />
 基于 Godot 4.x 的程序化地形生成项目，主要研究和实现多层地形生成算法和区块管理系统。项目参考了 Cataclysm: Dark Days Ahead 的地图生成思路。
 
 ## 系统架构
