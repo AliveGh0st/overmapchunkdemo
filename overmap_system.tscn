@@ -28,6 +28,7 @@ script = ExtResource("1_renderer")
 script = ExtResource("2_player")
 
 [node name="Camera2D" type="Camera2D" parent="Player"]
+zoom = Vector2(0.7, 0.7)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
 shape = SubResource("RectangleShape2D_1")

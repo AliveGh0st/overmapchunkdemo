@@ -123,6 +123,16 @@ class PlayerConfig:
 	const BLINK_INTERVAL: float = 0.1  ## 闪烁间隔时间（秒）
 
 # ============================================================================
+# 摄像机配置
+# ============================================================================
+class CameraConfig:
+	## 摄像机缩放档位配置
+	const ZOOM_LEVELS: Array[float] = [0.5, 0.7, 1.0, 1.5]  ## 4个缩放档位
+	const DEFAULT_ZOOM_INDEX: int = 2  ## 默认缩放档位索引（1.0倍）
+	const ZOOM_TRANSITION_SPEED: float = 5.0  ## 缩放过渡动画速度
+	const ZOOM_SMOOTH_ENABLED: bool = true  ## 是否启用平滑缩放过渡
+
+# ============================================================================
 # 河流生成配置
 # ============================================================================
 class RiverConfig:
@@ -270,6 +280,7 @@ var render: RenderConfig = RenderConfig.new()
 var terrain: TerrainConfig = TerrainConfig.new()
 var colors: ColorConfig = ColorConfig.new()
 var player: PlayerConfig = PlayerConfig.new()
+var camera: CameraConfig = CameraConfig.new()
 var river: RiverConfig = RiverConfig.new()
 var lake: LakeConfig = LakeConfig.new()
 var forest: ForestConfig = ForestConfig.new()
@@ -286,7 +297,8 @@ var runtime_config: Dictionary = {
 	"debug_mode": false,
 	"forest_size_adjust": 0.0,
 	"forestosity": 0.0,
-	"custom_seed": 0
+	"custom_seed": 0,
+	"current_zoom_index": CameraConfig.DEFAULT_ZOOM_INDEX
 }
 
 # ============================================================================
@@ -359,7 +371,8 @@ func reset_runtime_config() -> void:
 		"debug_mode": false,
 		"forest_size_adjust": 0.0,
 		"forestosity": 0.0,
-		"custom_seed": 0
+		"custom_seed": 0,
+		"current_zoom_index": CameraConfig.DEFAULT_ZOOM_INDEX
 	}
 	config_changed.emit("runtime", "all", "reset")
 	print("Runtime config reset to defaults")
@@ -381,6 +394,27 @@ func get_player_color() -> Color:
 ## 获取地形类型对应的瓦片坐标
 func get_atlas_coords_for_terrain(terrain_type: int) -> Vector2i:
 	return TerrainConfig.TERRAIN_TO_ATLAS_COORDS.get(terrain_type, Vector2i(-1, -1))
+
+## 摄像机缩放相关方法
+func get_current_zoom_level() -> float:
+	var index = runtime_config.get("current_zoom_index", CameraConfig.DEFAULT_ZOOM_INDEX)
+	return CameraConfig.ZOOM_LEVELS[index]
+
+func cycle_zoom_level() -> float:
+	var current_index = runtime_config.get("current_zoom_index", CameraConfig.DEFAULT_ZOOM_INDEX)
+	var next_index = (current_index + 1) % CameraConfig.ZOOM_LEVELS.size()
+	set_runtime_config("current_zoom_index", next_index)
+	return CameraConfig.ZOOM_LEVELS[next_index]
+
+func get_zoom_transition_speed() -> float:
+	return CameraConfig.ZOOM_TRANSITION_SPEED
+
+## 获取当前实际摄像机缩放级别（如果有玩家的话）
+func get_actual_camera_zoom() -> float:
+	var player_node = Engine.get_main_loop().get_first_node_in_group("player") if Engine.get_main_loop() else null
+	if player_node and player_node.has_method("get_camera_zoom"):
+		return player_node.get_camera_zoom()
+	return get_current_zoom_level()  # 回退到配置值
 
 # ============================================================================
 # 调试和诊断

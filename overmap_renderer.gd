@@ -246,6 +246,9 @@ func setup_tilemap():
 	var player_tileset: TileSet = create_player_tileset()
 	player_tile_map_layer.tile_set = player_tileset
 	
+	# 设置初始纹理过滤模式
+	update_texture_filtering_for_zoom()
+	
 	print("TileMapLayers created with tile_size: ", tile_set_resource.tile_size)
 	print("Using external terrain tileset from: ", Config.RenderConfig.TERRAIN_TILESET_PATH)
 	print("Using procedural player tileset")
@@ -328,6 +331,36 @@ func create_player_tileset() -> TileSet:
 	return tileset
 
 # ============================================================================
+# 动态纹理过滤系统
+# ============================================================================
+
+func update_texture_filtering_for_zoom():
+	"""
+	根据当前摄像机缩放级别动态调整纹理过滤模式
+	在小缩放时使用线性过滤以获得更平滑的效果
+	"""
+	if not tile_map_layer or not player_tile_map_layer:
+		return
+	
+	var camera_zoom = Config.get_actual_camera_zoom()
+	
+	# 根据缩放级别选择合适的过滤模式
+	var filter_mode: CanvasItem.TextureFilter
+	
+	if camera_zoom <= 0.7:
+		# 小缩放时使用线性过滤，减少锯齿
+		filter_mode = CanvasItem.TEXTURE_FILTER_LINEAR
+	else:
+		# 大缩放时使用最近邻过滤，保持像素艺术风格
+		filter_mode = CanvasItem.TEXTURE_FILTER_NEAREST
+	
+	# 应用过滤模式到TileMapLayer
+	tile_map_layer.texture_filter = filter_mode
+	player_tile_map_layer.texture_filter = filter_mode
+	
+	print("纹理过滤模式更新为: ", "Linear" if camera_zoom <= 0.7 else "Nearest", " (缩放: %.2f)" % camera_zoom)
+
+# ============================================================================
 # 噪声生成器初始化
 # ============================================================================
 
@@ -349,6 +382,7 @@ func check_and_generate_chunks():
 	"""
 	检查玩家位置并在需要时生成新区块
 	当玩家接近区块边缘时，自动生成相邻区块以保证连续的地图体验
+	支持基于摄像机缩放的动态区块生成范围调整
 	"""
 	if chunk_creation_cooldown > 0:
 		return
@@ -367,42 +401,55 @@ func check_and_generate_chunks():
 	var local_x = world_grid_x - current_chunk.x * Config.RenderConfig.CHUNK_SIZE
 	var local_y = world_grid_y - current_chunk.y * Config.RenderConfig.CHUNK_SIZE
 	
-	# 检查是否接近区块边缘
+	# 获取摄像机缩放，调整边界阈值
+	var camera_zoom = Config.get_actual_camera_zoom()
+	var zoom_multiplier = max(1.0, 2.0 / camera_zoom)  # 缩放0.5时，multiplier=4.0
+	var dynamic_border_threshold = int(Config.RenderConfig.BORDER_THRESHOLD * zoom_multiplier)
+	
+	# 确保阈值不会过大（避免在大区块中心就开始生成）
+	dynamic_border_threshold = min(dynamic_border_threshold, int(Config.RenderConfig.CHUNK_SIZE / 3.0))
+	
+	# 检查是否接近区块边缘（使用动态阈值）
 	var need_generation = false
 	
 	# 检查4个主要方向的边缘状态
-	var near_left = local_x < Config.RenderConfig.BORDER_THRESHOLD
-	var near_right = local_x >= Config.RenderConfig.CHUNK_SIZE - Config.RenderConfig.BORDER_THRESHOLD
-	var near_top = local_y < Config.RenderConfig.BORDER_THRESHOLD
-	var near_bottom = local_y >= Config.RenderConfig.CHUNK_SIZE - Config.RenderConfig.BORDER_THRESHOLD
+	var near_left = local_x < dynamic_border_threshold
+	var near_right = local_x >= Config.RenderConfig.CHUNK_SIZE - dynamic_border_threshold
+	var near_top = local_y < dynamic_border_threshold
+	var near_bottom = local_y >= Config.RenderConfig.CHUNK_SIZE - dynamic_border_threshold
 	
-	# 生成主要方向的相邻区块
-	if near_left:
-		generate_chunk_at(current_chunk + Vector2i(-1, 0))
-		need_generation = true
-	if near_right:
-		generate_chunk_at(current_chunk + Vector2i(1, 0))
-		need_generation = true
-	if near_top:
-		generate_chunk_at(current_chunk + Vector2i(0, -1))
-		need_generation = true
-	if near_bottom:
-		generate_chunk_at(current_chunk + Vector2i(0, 1))
-		need_generation = true
+	# 计算需要预生成的区块范围（基于缩放级别）
+	var chunk_range = max(1, int(zoom_multiplier / 2.0))  # 缩放0.5时，预生成2圈区块
 	
-	# 生成对角线方向的区块（当玩家接近区块角落时）
-	if near_left and near_top:
-		generate_chunk_at(current_chunk + Vector2i(-1, -1))
-		need_generation = true
-	if near_right and near_top:
-		generate_chunk_at(current_chunk + Vector2i(1, -1))
-		need_generation = true
-	if near_left and near_bottom:
-		generate_chunk_at(current_chunk + Vector2i(-1, 1))
-		need_generation = true
-	if near_right and near_bottom:
-		generate_chunk_at(current_chunk + Vector2i(1, 1))
-		need_generation = true
+	# 生成主要方向和扩展方向的区块
+	for dx in range(-chunk_range, chunk_range + 1):
+		for dy in range(-chunk_range, chunk_range + 1):
+			if dx == 0 and dy == 0:
+				continue  # 跳过当前区块（稍后处理）
+			
+			var should_generate = false
+			
+			# 检查是否需要生成这个方向的区块
+			if dx < 0 and near_left:  # 西方向
+				should_generate = true
+			elif dx > 0 and near_right:  # 东方向
+				should_generate = true
+			elif dy < 0 and near_top:  # 北方向
+				should_generate = true
+			elif dy > 0 and near_bottom:  # 南方向
+				should_generate = true
+			elif (dx < 0 and dy < 0) and (near_left and near_top):  # 西北方向
+				should_generate = true
+			elif (dx > 0 and dy < 0) and (near_right and near_top):  # 东北方向
+				should_generate = true
+			elif (dx < 0 and dy > 0) and (near_left and near_bottom):  # 西南方向
+				should_generate = true
+			elif (dx > 0 and dy > 0) and (near_right and near_bottom):  # 东南方向
+				should_generate = true
+			
+			if should_generate:
+				generate_chunk_at(current_chunk + Vector2i(dx, dy))
+				need_generation = true
 	
 	# 确保当前区块已生成（安全检查）
 	generate_chunk_at(current_chunk)
@@ -1153,17 +1200,23 @@ func calculate_urbanity(chunk_coord: Vector2i):
 func update_canvas_rendering():
 	"""
 	更新TileMapLayer渲染系统
-	根据玩家位置计算可见区域，只渲染必要的瓦片以优化性能
+	根据玩家位置和摄像机缩放计算可见区域，只渲染必要的瓦片以优化性能
+	支持动态缩放调整：当摄像机缩放较小时，扩大渲染范围以覆盖更大的可视区域
 	"""
 	# 获取玩家当前世界位置（游戏世界格子坐标）
 	var world_pos = player_ref.global_position
 	var center_world_x = int(world_pos.x / Config.RenderConfig.TILE_SIZE)
 	var center_world_y = int(world_pos.y / Config.RenderConfig.TILE_SIZE)
 	
-	# 计算当前可见区域范围
+	# 获取当前摄像机缩放级别，用于调整可视范围
+	var camera_zoom = Config.get_actual_camera_zoom()
+	
+	# 计算当前可见区域范围，考虑摄像机缩放
 	var viewport_size = get_viewport().get_visible_rect().size
-	var half_view_tiles_x = int(viewport_size.x / (Config.RenderConfig.TILE_SIZE * 2)) + 5  # 添加缓冲区
-	var half_view_tiles_y = int(viewport_size.y / (Config.RenderConfig.TILE_SIZE * 2)) + 5
+	# 当缩放变小时，可视范围变大，需要渲染更多瓦片
+	var zoom_factor = 1.0 / camera_zoom  # 缩放0.5时，zoom_factor=2.0，渲染范围扩大2倍
+	var half_view_tiles_x = int((viewport_size.x * zoom_factor) / (Config.RenderConfig.TILE_SIZE * 2)) + 10  # 增加缓冲区
+	var half_view_tiles_y = int((viewport_size.y * zoom_factor) / (Config.RenderConfig.TILE_SIZE * 2)) + 10
 	
 	var render_start_x = center_world_x - half_view_tiles_x
 	var render_start_y = center_world_y - half_view_tiles_y

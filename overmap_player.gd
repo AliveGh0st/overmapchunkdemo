@@ -28,6 +28,12 @@ extends CharacterBody2D
 # 是否启用格子对齐
 @export var grid_aligned: bool = Config.player.GRID_ALIGNED
 
+# 摄像机引用
+@onready var camera: Camera2D = $Camera2D
+# 缩放切换相关变量
+var target_zoom: Vector2 = Vector2.ONE
+var z_key_pressed_last_frame: bool = false
+
 func _ready():
 	# 添加到玩家组，供overmap管理器查找
 	add_to_group("player")
@@ -56,8 +62,22 @@ func _ready():
 		# 隐藏玩家精灵，因为玩家的视觉表示由OvermapRenderer处理
 		sprite.visible = false
 		pass # 替换为 pass 以避免空的 if 块
+	
+	# 初始化摄像机缩放
+	if camera:
+		var initial_zoom = Config.get_current_zoom_level()
+		camera.zoom = Vector2(initial_zoom, initial_zoom)
+		target_zoom = camera.zoom
+		print("摄像机初始缩放设置为: ", initial_zoom)
 
-func _physics_process(_delta):
+func _physics_process(delta):
+	# 处理缩放输入
+	handle_zoom_input()
+	
+	# 平滑缩放过渡
+	if Config.camera.ZOOM_SMOOTH_ENABLED:
+		update_camera_zoom(delta)
+	
 	# 获取输入向量
 	var input_vector = Vector2.ZERO
 	
@@ -102,3 +122,63 @@ func get_grid_position() -> Vector2i:
 		round((global_position.x - Config.render.TILE_SIZE / 2.0) / Config.render.TILE_SIZE),
 		round((global_position.y - Config.render.TILE_SIZE / 2.0) / Config.render.TILE_SIZE)
 	)
+
+# ============================================================================
+# 摄像机缩放功能
+# ============================================================================
+
+# 处理缩放输入
+func handle_zoom_input():
+	var z_key_pressed_this_frame = Input.is_key_pressed(KEY_Z)
+	
+	# 检测 Z 键的按下事件（只在按下的瞬间触发，避免重复）
+	if z_key_pressed_this_frame and not z_key_pressed_last_frame:
+		cycle_camera_zoom()
+	
+	z_key_pressed_last_frame = z_key_pressed_this_frame
+
+# 切换到下一个缩放档位
+func cycle_camera_zoom():
+	if not camera:
+		return
+	
+	var new_zoom_level = Config.cycle_zoom_level()
+	target_zoom = Vector2(new_zoom_level, new_zoom_level)
+	
+	print("摄像机缩放切换到: ", new_zoom_level, "x")
+	
+	# 如果没有启用平滑缩放，立即应用
+	if not Config.camera.ZOOM_SMOOTH_ENABLED:
+		camera.zoom = target_zoom
+	
+	# 通知渲染器更新纹理过滤
+	var overmap_renderer = get_tree().get_first_node_in_group("overmap_manager")
+	if overmap_renderer and overmap_renderer.has_method("update_texture_filtering_for_zoom"):
+		overmap_renderer.update_texture_filtering_for_zoom()
+
+# 平滑更新摄像机缩放
+func update_camera_zoom(delta: float):
+	if not camera:
+		return
+	
+	# 使用lerp进行平滑过渡
+	if camera.zoom.distance_to(target_zoom) > 0.01:
+		camera.zoom = camera.zoom.lerp(target_zoom, Config.get_zoom_transition_speed() * delta)
+	else:
+		camera.zoom = target_zoom
+
+# 设置特定的缩放级别（供外部调用）
+func set_zoom_level(zoom_index: int):
+	if zoom_index >= 0 and zoom_index < Config.camera.ZOOM_LEVELS.size():
+		Config.set_runtime_config("current_zoom_index", zoom_index)
+		var new_zoom_level = Config.camera.ZOOM_LEVELS[zoom_index]
+		target_zoom = Vector2(new_zoom_level, new_zoom_level)
+		
+		if not Config.camera.ZOOM_SMOOTH_ENABLED and camera:
+			camera.zoom = target_zoom
+
+# 获取当前摄像机的实际缩放级别（供渲染器调用）
+func get_camera_zoom() -> float:
+	if camera:
+		return camera.zoom.x  # 返回实际的摄像机缩放值
+	return 1.0  # 默认缩放级别
