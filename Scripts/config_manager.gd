@@ -1,16 +1,16 @@
 # MIT License
 # Copyright (c) 2025 AliveGh0st
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in all
 # copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -30,15 +30,15 @@ extends Node
 # ============================================================================
 class RenderConfig:
 	## 地图渲染核心配置
-	const TILE_SIZE: int = 16  ## 每个瓦片的像素大小
-	const CHUNK_SIZE: int = 180  ## 地图区块大小（每个区块的格子数量）
-	const BORDER_THRESHOLD: int = 11  ## 触发新区块生成的边界阈值
-	
+	const TILE_SIZE: int = 16 ## 每个瓦片的像素大小
+	const CHUNK_SIZE: int = 180 ## 地图区块大小（每个区块的格子数量）
+	const BORDER_THRESHOLD: int = 11 ## 触发新区块生成的边界阈值
+
 	## 背景颜色配置
-	const BACKGROUND_COLOR: Color = Color(0.0, 0.168627, 0.211765, 1.0)  ## 背景色 #002B36 (Solarized Dark Base03)
+	const BACKGROUND_COLOR: Color = Color(0.0, 0.168627, 0.211765, 1.0) ## 背景色 #002B36 (Solarized Dark Base03)
 
 	## TileSet 资源配置
-	const TERRAIN_TILESET_PATH: String = "res://assets/tilesets/overmap.tres"  ## 地形 TileSet 路径
+	const TERRAIN_TILESET_PATH: String = "res://assets/tilesets/overmap.tres" ## 地形 TileSet 路径
 
 # ============================================================================
 # 地形系统配置
@@ -53,52 +53,52 @@ class TerrainConfig:
 	const TYPE_FOREST: int = 5
 	const TYPE_FOREST_THICK: int = 6
 	const TYPE_SWAMP: int = 7
-	const TYPE_ROAD: int = 8           ## 道路地形（包括线性道路）
-	const TYPE_CITY_TILE: int = 9      ## 城市瓦片地形
-	
+	const TYPE_ROAD: int = 8 ## 道路地形（包括线性道路）
+	const TYPE_CITY_TILE: int = 9 ## 城市瓦片地形
+
 	## 基础地形类型到TileSet瓦片坐标的映射
 	## 每个地形类型对应一个Vector2i坐标，表示在TileSet中的位置
 	## 注意：道路地形将使用线性地形系统，这里的坐标仅作为默认后备
 	const TERRAIN_TO_ATLAS_COORDS: Dictionary = {
-		TYPE_EMPTY: Vector2i(-1, -1),    # 空地形，不渲染
-		TYPE_LAND: Vector2i(0, 0),       # 田野瓦片坐标
-		TYPE_RIVER: Vector2i(2, 0),      # 河流瓦片坐标（非线性）
+		TYPE_EMPTY: Vector2i(-1, -1), # 空地形，不渲染
+		TYPE_LAND: Vector2i(0, 0), # 田野瓦片坐标
+		TYPE_RIVER: Vector2i(2, 0), # 河流瓦片坐标（非线性）
 		TYPE_LAKE_SURFACE: Vector2i(2, 0), # 湖泊表面瓦片坐标
 		TYPE_LAKE_SHORE: Vector2i(0, 1), # 湖岸瓦片坐标
-		TYPE_FOREST: Vector2i(1, 1),     # 森林瓦片坐标
+		TYPE_FOREST: Vector2i(1, 1), # 森林瓦片坐标
 		TYPE_FOREST_THICK: Vector2i(2, 1), # 密林瓦片坐标
-		TYPE_SWAMP: Vector2i(0, 2),      # 沼泽瓦片坐标
-		TYPE_ROAD: Vector2i(1, 2),       # 道路默认坐标（线性系统会覆盖）
-		TYPE_CITY_TILE: Vector2i(2, 2)   # 城市瓦片坐标
+		TYPE_SWAMP: Vector2i(0, 2), # 沼泽瓦片坐标
+		TYPE_ROAD: Vector2i(1, 2), # 道路默认坐标（线性系统会覆盖）
+		TYPE_CITY_TILE: Vector2i(2, 2) # 城市瓦片坐标
 	}
-	
+
 	## 线性地形系统配置
 	## 16种线性地形类型的定义，只保留实际使用的字段
 	const LINEAR_TERRAIN_DEFINITIONS = [
-		{"id": "road_isolated", "symbol": "┼", "atlas": Vector2i(0, 3)},    # 0  ---- 孤立
-		{"id": "road_end_south", "symbol": "╵", "atlas": Vector2i(1, 3)},   # 1  ---n 南端点
-		{"id": "road_end_west", "symbol": "╴", "atlas": Vector2i(2, 3)},    # 2  --e- 西端点
-		{"id": "road_ne", "symbol": "└", "atlas": Vector2i(3, 3)},          # 3  --en 东北弯道
-		{"id": "road_end_north", "symbol": "╷", "atlas": Vector2i(0, 4)},   # 4  -s-- 北端点
-		{"id": "road_ns", "symbol": "│", "atlas": Vector2i(1, 4)},          # 5  -s-n 南北直线
-		{"id": "road_es", "symbol": "┌", "atlas": Vector2i(2, 4)},          # 6  -se- 东南弯道
-		{"id": "road_nes", "symbol": "├", "atlas": Vector2i(3, 4)},         # 7  -sen 东南北T型
-		{"id": "road_end_east", "symbol": "╶", "atlas": Vector2i(0, 5)},    # 8  w--- 东端点
-		{"id": "road_wn", "symbol": "┘", "atlas": Vector2i(1, 5)},          # 9  w--n 西北弯道
-		{"id": "road_ew", "symbol": "─", "atlas": Vector2i(2, 5)},          # 10 w-e- 东西直线
-		{"id": "road_new", "symbol": "┴", "atlas": Vector2i(3, 5)},         # 11 w-en 东西北T型
-		{"id": "road_sw", "symbol": "┐", "atlas": Vector2i(0, 6)},          # 12 ws-- 西南弯道
-		{"id": "road_nsw", "symbol": "┤", "atlas": Vector2i(1, 6)},         # 13 ws-n 南北西T型
-		{"id": "road_esw", "symbol": "┬", "atlas": Vector2i(2, 6)},         # 14 wse- 东南西T型
-		{"id": "road_nesw", "symbol": "┼", "atlas": Vector2i(3, 6)}         # 15 wsen 十字路口
+		{"id": "road_isolated", "symbol": "┼", "atlas": Vector2i(0, 3)}, # 0  ---- 孤立
+		{"id": "road_end_south", "symbol": "╵", "atlas": Vector2i(1, 3)}, # 1  ---n 南端点
+		{"id": "road_end_west", "symbol": "╴", "atlas": Vector2i(2, 3)}, # 2  --e- 西端点
+		{"id": "road_ne", "symbol": "└", "atlas": Vector2i(3, 3)}, # 3  --en 东北弯道
+		{"id": "road_end_north", "symbol": "╷", "atlas": Vector2i(0, 4)}, # 4  -s-- 北端点
+		{"id": "road_ns", "symbol": "│", "atlas": Vector2i(1, 4)}, # 5  -s-n 南北直线
+		{"id": "road_es", "symbol": "┌", "atlas": Vector2i(2, 4)}, # 6  -se- 东南弯道
+		{"id": "road_nes", "symbol": "├", "atlas": Vector2i(3, 4)}, # 7  -sen 东南北T型
+		{"id": "road_end_east", "symbol": "╶", "atlas": Vector2i(0, 5)}, # 8  w--- 东端点
+		{"id": "road_wn", "symbol": "┘", "atlas": Vector2i(1, 5)}, # 9  w--n 西北弯道
+		{"id": "road_ew", "symbol": "─", "atlas": Vector2i(2, 5)}, # 10 w-e- 东西直线
+		{"id": "road_new", "symbol": "┴", "atlas": Vector2i(3, 5)}, # 11 w-en 东西北T型
+		{"id": "road_sw", "symbol": "┐", "atlas": Vector2i(0, 6)}, # 12 ws-- 西南弯道
+		{"id": "road_nsw", "symbol": "┤", "atlas": Vector2i(1, 6)}, # 13 ws-n 南北西T型
+		{"id": "road_esw", "symbol": "┬", "atlas": Vector2i(2, 6)}, # 14 wse- 东南西T型
+		{"id": "road_nesw", "symbol": "┼", "atlas": Vector2i(3, 6)} # 15 wsen 十字路口
 	]
-	
+
 	## 快速获取线性地形的图集坐标
 	static func get_linear_terrain_atlas_coords(line_value: int) -> Vector2i:
 		if line_value >= 0 and line_value < LINEAR_TERRAIN_DEFINITIONS.size():
 			return LINEAR_TERRAIN_DEFINITIONS[line_value]["atlas"]
 		return Vector2i(-1, -1)
-	
+
 	## 获取线性地形的显示名称
 	static func get_linear_terrain_name(line_value: int) -> String:
 		if line_value >= 0 and line_value < LINEAR_TERRAIN_DEFINITIONS.size():
@@ -111,39 +111,39 @@ class TerrainConfig:
 # ============================================================================
 class PlayerConfig:
 	## 玩家控制和显示配置
-	const MOVEMENT_SPEED: float = 320.0  ## 移动速度（像素/秒）
-	const GRID_ALIGNED: bool = true  ## 是否启用格子对齐
-	
+	const MOVEMENT_SPEED: float = 320.0 ## 移动速度（像素/秒）
+	const GRID_ALIGNED: bool = true ## 是否启用格子对齐
+
 	## 玩家标记瓦片配置
-	const PLAYER_ATLAS_COORDS: Vector2i = Vector2i(0, 7)  ## 玩家标记在TileSet中的图集坐标
+	const PLAYER_ATLAS_COORDS: Vector2i = Vector2i(0, 7) ## 玩家标记在TileSet中的图集坐标
 
 # ============================================================================
 # 摄像机配置
 # ============================================================================
 class CameraConfig:
 	## 摄像机缩放档位配置
-	const ZOOM_LEVELS: Array[float] = [0.5, 0.7, 1.0, 1.5]  ## 4个缩放档位
-	const DEFAULT_ZOOM_INDEX: int = 2  ## 默认缩放档位索引（1.0倍）
-	const ZOOM_TRANSITION_SPEED: float = 5.0  ## 缩放过渡动画速度
-	const ZOOM_SMOOTH_ENABLED: bool = true  ## 是否启用平滑缩放过渡
+	const ZOOM_LEVELS: Array[float] = [0.5, 0.7, 1.0, 1.5] ## 4个缩放档位
+	const DEFAULT_ZOOM_INDEX: int = 2 ## 默认缩放档位索引（1.0倍）
+	const ZOOM_TRANSITION_SPEED: float = 5.0 ## 缩放过渡动画速度
+	const ZOOM_SMOOTH_ENABLED: bool = true ## 是否启用平滑缩放过渡
 
 # ============================================================================
 # 河流生成配置
 # ============================================================================
 class RiverConfig:
 	## 河流生成系统参数
-	const DENSITY_PARAM: int = 1  ## 河流密度参数，对应C++版本的river_scale
+	const DENSITY_PARAM: int = 1 ## 河流密度参数，对应C++版本的river_scale
 
 # ============================================================================
 # 湖泊生成配置
 # ============================================================================
 class LakeConfig:
 	## 湖泊生成系统参数
-	const NOISE_THRESHOLD: float = 0.25  ## 湖泊生成的噪声阈值
-	const SIZE_MIN: int = 20  ## 湖泊最小尺寸
-	const RIVER_CONNECTION_MIN_SIZE: int = 65  ## 湖泊连接河流的最小尺寸阈值
-	const DEPTH: int = -5  ## 湖泊深度（Z轴层级）
-	
+	const NOISE_THRESHOLD: float = 0.25 ## 湖泊生成的噪声阈值
+	const SIZE_MIN: int = 20 ## 湖泊最小尺寸
+	const RIVER_CONNECTION_MIN_SIZE: int = 65 ## 湖泊连接河流的最小尺寸阈值
+	const DEPTH: int = -5 ## 湖泊深度（Z轴层级）
+
 	## 湖泊噪声生成参数
 	const NOISE_OCTAVES: int = 8
 	const NOISE_PERSISTENCE: float = 0.5
@@ -157,20 +157,20 @@ class ForestConfig:
 	## 森林生成阈值
 	const NOISE_THRESHOLD_FOREST: float = 0.25
 	const NOISE_THRESHOLD_FOREST_THICK: float = 0.3
-	
+
 	## 森林方向增长率参数
 	const INCREASE_NORTH: float = 0.04
 	const INCREASE_EAST: float = 0.0
 	const INCREASE_WEST: float = 0.02
 	const INCREASE_SOUTH: float = 0.0
-	const LIMIT: float = 0.395  ## 森林大小上限
-	
+	const LIMIT: float = 0.395 ## 森林大小上限
+
 	## 第一层噪声参数（基础分布）
 	const NOISE_1_OCTAVES: int = 4
 	const NOISE_1_PERSISTENCE: float = 0.5
 	const NOISE_1_SCALE: float = 0.03
 	const NOISE_1_POWER: float = 2.0
-	
+
 	## 第二层噪声参数（密度减少效果）
 	const NOISE_2_OCTAVES: int = 6
 	const NOISE_2_PERSISTENCE: float = 0.5
@@ -184,61 +184,61 @@ class SwampConfig:
 	## 河流洪泛平原缓冲区距离范围（以格子为单位）
 	const RIVER_FLOODPLAIN_BUFFER_DISTANCE_MIN: int = 3
 	const RIVER_FLOODPLAIN_BUFFER_DISTANCE_MAX: int = 15
-	
+
 	## 沼泽生成噪声阈值
-	const NOISE_THRESHOLD_ADJACENT_WATER: float = 0.3  # 河流邻近沼泽阈值
-	const NOISE_THRESHOLD_ISOLATED: float = 0.6        # 独立沼泽阈值
-	
+	const NOISE_THRESHOLD_ADJACENT_WATER: float = 0.3 # 河流邻近沼泽阈值
+	const NOISE_THRESHOLD_ISOLATED: float = 0.6 # 独立沼泽阈值
+
 	## 性能优化参数
-	const ENABLE_PERFORMANCE_OPTIMIZATIONS: bool = true  # 启用性能优化
-	const RIVER_SEARCH_RADIUS_OPTIMIZATION: bool = true  # 优化河流搜索半径
-	const ENABLE_PERFORMANCE_LOGGING: bool = false       # 启用性能统计日志
-	
+	const ENABLE_PERFORMANCE_OPTIMIZATIONS: bool = true # 启用性能优化
+	const RIVER_SEARCH_RADIUS_OPTIMIZATION: bool = true # 优化河流搜索半径
+	const ENABLE_PERFORMANCE_LOGGING: bool = false # 启用性能统计日志
+
 	## 洪泛平原噪声参数（对应C++的om_noise_layer_floodplain）
-	const FLOODPLAIN_NOISE_OCTAVES: int = 4      ## 噪声倍频数
+	const FLOODPLAIN_NOISE_OCTAVES: int = 4 ## 噪声倍频数
 	const FLOODPLAIN_NOISE_PERSISTENCE: float = 0.5 ## 噪声持续性
-	const FLOODPLAIN_NOISE_SCALE: float = 0.05     ## 噪声缩放比例
-	const FLOODPLAIN_NOISE_POWER: float = 2.0      ## 幂运算系数
+	const FLOODPLAIN_NOISE_SCALE: float = 0.05 ## 噪声缩放比例
+	const FLOODPLAIN_NOISE_POWER: float = 2.0 ## 幂运算系数
 
 # ============================================================================
 # 城市生成配置
 # ============================================================================
 class CityConfig:
 	## 城市间距和大小参数（对应C++中的配置选项）
-	const CITY_SPACING: int = 3               ## 城市间距配置值（降低以增加城市数量）
-	const CITY_SIZE: int = 12                 ## 基础城市大小
-	const OVERMAP_MAXIMUM_URBANITY: int = 8  ## 最大城市化程度乘数
-	
+	const CITY_SPACING: int = 3 ## 城市间距配置值（降低以增加城市数量）
+	const CITY_SIZE: int = 12 ## 基础城市大小
+	const OVERMAP_MAXIMUM_URBANITY: int = 8 ## 最大城市化程度乘数
+
 	## 城市化程度增长参数（对应C++的城市化方向增长）
-	const URBAN_INCREASE_NORTH: int = 0      ## 北方向城市化增长值
-	const URBAN_INCREASE_EAST: int = 10       ## 东方向城市化增长值
-	const URBAN_INCREASE_WEST: int = 0       ## 西方向城市化增长值
-	const URBAN_INCREASE_SOUTH: int = 5      ## 南方向城市化增长值
-	
+	const URBAN_INCREASE_NORTH: int = 0 ## 北方向城市化增长值
+	const URBAN_INCREASE_EAST: int = 10 ## 东方向城市化增长值
+	const URBAN_INCREASE_WEST: int = 0 ## 西方向城市化增长值
+	const URBAN_INCREASE_SOUTH: int = 5 ## 南方向城市化增长值
+
 	## 城市生成约束
-	const MAX_PLACEMENT_ATTEMPTS: int = 50   ## 最大放置尝试次数
-	const MIN_CITY_SIZE: int = 2             ## 最小城市大小
-	const MAX_CITY_SIZE: int = 55            ## 最大城市大小
-	const BUILDING_CHANCE: int = 4           ## 建筑生成概率 (1/4 = 25%)
-	
+	const MAX_PLACEMENT_ATTEMPTS: int = 50 ## 最大放置尝试次数
+	const MIN_CITY_SIZE: int = 2 ## 最小城市大小
+	const MAX_CITY_SIZE: int = 55 ## 最大城市大小
+	const BUILDING_CHANCE: int = 4 ## 建筑生成概率 (1/4 = 25%)
+
 	## 城市生成概率参数
-	const TINY_CITY_CHANCE: int = 3          ## 生成微小城市的概率 (1/3)
-	const SMALL_CITY_CHANCE: int = 2         ## 生成小城市的概率 (1/2)
-	const LARGE_CITY_CHANCE: int = 2         ## 生成大城市的概率 (1/2)
+	const TINY_CITY_CHANCE: int = 3 ## 生成微小城市的概率 (1/3)
+	const SMALL_CITY_CHANCE: int = 2 ## 生成小城市的概率 (1/2)
+	const LARGE_CITY_CHANCE: int = 2 ## 生成大城市的概率 (1/2)
 	# 其余为大型城市 (17%)
-	
+
 	## 城市大小调整系数
-	const TINY_SIZE_MULTIPLIER: float = 1.0 / 3.0     ## 微小城市大小倍数
-	const SMALL_SIZE_MULTIPLIER: float = 2.0 / 3.0    ## 小城市大小倍数
-	const LARGE_SIZE_MULTIPLIER: float = 3.0 / 2.0    ## 大城市大小倍数
-	const HUGE_SIZE_MULTIPLIER: float = 2.0           ## 超大城市大小倍数
-	
+	const TINY_SIZE_MULTIPLIER: float = 1.0 / 3.0 ## 微小城市大小倍数
+	const SMALL_SIZE_MULTIPLIER: float = 2.0 / 3.0 ## 小城市大小倍数
+	const LARGE_SIZE_MULTIPLIER: float = 3.0 / 2.0 ## 大城市大小倍数
+	const HUGE_SIZE_MULTIPLIER: float = 2.0 ## 超大城市大小倍数
+
 	## 商店和公园分布参数（对应C++的city_settings）
-	const SHOP_RADIUS: int = 30               ## 商店分布半径（增大以覆盖更多区域）
-	const PARK_RADIUS: int = 20               ## 公园分布半径（增大以覆盖更多区域）
-	const SHOP_SIGMA: int = 50                ## 商店分布标准差（合理的变化范围）
-	const PARK_SIGMA: int = 80                ## 公园分布标准差（合理的变化范围）
-	
+	const SHOP_RADIUS: int = 30 ## 商店分布半径（增大以覆盖更多区域）
+	const PARK_RADIUS: int = 20 ## 公园分布半径（增大以覆盖更多区域）
+	const SHOP_SIGMA: int = 50 ## 商店分布标准差（合理的变化范围）
+	const PARK_SIGMA: int = 80 ## 公园分布标准差（合理的变化范围）
+
 	## 建筑类型定义
 	static func get_building_types() -> Dictionary:
 		return {
@@ -264,7 +264,7 @@ class CityConfig:
 # ============================================================================
 class PerformanceConfig:
 	## 区块创建优化
-	const CHUNK_CREATION_COOLDOWN_TIME: float = 0.1  ## 区块创建冷却时间（秒）
+	const CHUNK_CREATION_COOLDOWN_TIME: float = 0.1 ## 区块创建冷却时间（秒）
 
 # ============================================================================
 # 配置管理器实例
@@ -329,7 +329,7 @@ func save_runtime_config():
 	var config_file = ConfigFile.new()
 	for key in runtime_config.keys():
 		config_file.set_value("runtime", key, runtime_config[key])
-	
+
 	var err = config_file.save("user://runtime_config.cfg")
 	if err == OK:
 		print("Runtime config saved successfully")
@@ -350,11 +350,11 @@ func set_runtime_config(key: String, value) -> void:
 		var old_value = runtime_config[key]
 		runtime_config[key] = value
 		config_changed.emit("runtime", key, value)
-		
+
 		# 特殊处理调试模式
 		if key == "debug_mode":
 			debug_mode_changed.emit(value)
-		
+
 		print("Config changed: runtime.", key, " = ", value, " (was: ", old_value, ")")
 	else:
 		print("Warning: Unknown runtime config key: ", key)
@@ -405,7 +405,7 @@ func get_actual_camera_zoom() -> float:
 	var player_node = Engine.get_main_loop().get_first_node_in_group("player") if Engine.get_main_loop() else null
 	if player_node and player_node.has_method("get_camera_zoom"):
 		return player_node.get_camera_zoom()
-	return get_current_zoom_level()  # 回退到配置值
+	return get_current_zoom_level() # 回退到配置值
 
 # ============================================================================
 # 调试和诊断

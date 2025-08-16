@@ -1,16 +1,16 @@
 # MIT License
 # Copyright (c) 2025 AliveGh0st
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in all
 # copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -30,17 +30,17 @@ class_name NoiseManager
 # 噪声类型枚举
 # ============================================================================
 enum NoiseType {
-	LAKE,           ## 湖泊生成噪声
-	FOREST_BASE,    ## 森林基础分布噪声（第一层）
+	LAKE, ## 湖泊生成噪声
+	FOREST_BASE, ## 森林基础分布噪声（第一层）
 	FOREST_DENSITY, ## 森林密度减少噪声（第二层）
-	FLOODPLAIN     ## 洪泛平原噪声（沼泽生成）
+	FLOODPLAIN ## 洪泛平原噪声（沼泽生成）
 }
 
 # ============================================================================
 # 噪声实例存储
 # ============================================================================
-var _noise_instances: Dictionary = {}  ## 存储所有噪声实例，键为 NoiseType 枚举
-var _world_seed: int = 0               ## 全局世界种子
+var _noise_instances: Dictionary = {} ## 存储所有噪声实例，键为 NoiseType 枚举
+var _world_seed: int = 0 ## 全局世界种子
 
 # ============================================================================
 # 噪声配置数据结构
@@ -51,8 +51,8 @@ class NoiseConfig:
 	var octaves: int = 4
 	var persistence: float = 0.5
 	var noise_type: FastNoiseLite.NoiseType = FastNoiseLite.TYPE_SIMPLEX
-	var seed_offset: int = 0  ## 种子偏移，用于在同一世界种子下生成不同的噪声
-	
+	var seed_offset: int = 0 ## 种子偏移，用于在同一世界种子下生成不同的噪声
+
 	func _init(freq: float = 0.1, oct: int = 4, pers: float = 0.5, type: FastNoiseLite.NoiseType = FastNoiseLite.TYPE_SIMPLEX, offset: int = 0):
 		frequency = freq
 		octaves = oct
@@ -87,34 +87,34 @@ func _create_all_noise_instances():
 		0
 	)
 	_create_noise_instance(NoiseType.LAKE, lake_config)
-	
+
 	# 森林基础分布噪声配置
 	var forest_base_config = NoiseConfig.new(
 		Config.ForestConfig.NOISE_1_SCALE,
 		Config.ForestConfig.NOISE_1_OCTAVES,
 		Config.ForestConfig.NOISE_1_PERSISTENCE,
 		FastNoiseLite.TYPE_SIMPLEX,
-		0  # 使用不同的种子偏移
+		0 # 使用不同的种子偏移
 	)
 	_create_noise_instance(NoiseType.FOREST_BASE, forest_base_config)
-	
+
 	# 森林密度减少噪声配置
 	var forest_density_config = NoiseConfig.new(
 		Config.ForestConfig.NOISE_2_SCALE,
 		Config.ForestConfig.NOISE_2_OCTAVES,
 		Config.ForestConfig.NOISE_2_PERSISTENCE,
 		FastNoiseLite.TYPE_SIMPLEX,
-		0  # 使用不同的种子偏移
+		0 # 使用不同的种子偏移
 	)
 	_create_noise_instance(NoiseType.FOREST_DENSITY, forest_density_config)
-	
+
 	# 洪泛平原噪声配置
 	var floodplain_config = NoiseConfig.new(
 		Config.SwampConfig.FLOODPLAIN_NOISE_SCALE,
 		Config.SwampConfig.FLOODPLAIN_NOISE_OCTAVES,
 		Config.SwampConfig.FLOODPLAIN_NOISE_PERSISTENCE,
 		FastNoiseLite.TYPE_SIMPLEX,
-		0  # 使用不同的种子偏移
+		0 # 使用不同的种子偏移
 	)
 	_create_noise_instance(NoiseType.FLOODPLAIN, floodplain_config)
 
@@ -128,7 +128,7 @@ func _create_noise_instance(type: NoiseType, config: NoiseConfig):
 	noise.noise_type = config.noise_type
 	noise.fractal_octaves = config.octaves
 	noise.fractal_gain = config.persistence
-	
+
 	_noise_instances[type] = noise
 	print("Created noise instance: ", NoiseType.keys()[type], " with seed: ", noise.seed)
 

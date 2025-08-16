@@ -61,12 +61,12 @@ func _draw_single_river_path(chunk_coord: Vector2i, start: Vector2i, end: Vector
         # 随机游走
         p2.x += randi_range(-1, 1)
         p2.y += randi_range(-1, 1)
-        
+
         # 向目标点偏移
         if end.x > p2.x and probability_check():
             p2.x += 1
         # ... 其他方向的偏移逻辑
-        
+
         # 应用河流笔刷，设置地形
         apply_river_brush(p2, river_scale)
 ```
@@ -85,19 +85,19 @@ func _draw_single_river_path(chunk_coord: Vector2i, start: Vector2i, end: Vector
 func _point_flood_fill_4_connected(start: Vector2i, visited: Dictionary, predicate: Callable) -> Array[Vector2i]:
     var filled_points: Array[Vector2i] = []
     var to_check: Array[Vector2i] = [start]
-    
+
     while not to_check.is_empty():
         var current = to_check.pop_front()
         if visited.has(current) or not predicate.call(current):
             continue
-            
+
         visited[current] = true
         filled_points.append(current)
-        
+
         # 添加四个方向的邻居点
         for direction in [Vector2i(0,1), Vector2i(0,-1), Vector2i(1,0), Vector2i(-1,0)]:
             to_check.append(current + direction)
-    
+
     return filled_points
 ```
 
@@ -117,11 +117,11 @@ func forest_noise_at(world_pos: Vector2i) -> float:
     # 第一层：基础分布噪声
     var base = (noise_1.get_noise_2d(pos.x, pos.y) + 1.0) * 0.5
     base = pow(base, NOISE_1_POWER)
-    
+
     # 第二层：密度减少噪声
     var density_reduction = (noise_2.get_noise_2d(pos.x, pos.y) + 1.0) * 0.5
     density_reduction = pow(density_reduction, NOISE_2_POWER)
-    
+
     # 合成最终值
     return max(0.0, base - density_reduction * 0.5)
 ```
@@ -131,14 +131,14 @@ func forest_noise_at(world_pos: Vector2i) -> float:
 # 根据世界坐标调整森林密度
 func calculate_forestosity(chunk_coord: Vector2i):
     var forest_size_adjust = 0.0
-    
+
     # 不同方向的增长率影响
     if chunk_coord.x < 0:  # 西方
         forest_size_adjust -= chunk_coord.x * INCREASE_WEST
     if chunk_coord.x > 0:  # 东方
         forest_size_adjust += chunk_coord.x * INCREASE_EAST
     # ... 北方和南方的处理类似
-    
+
     # 限制森林覆盖率上限
     forest_size_adjust = min(forest_size_adjust, LIMIT - THRESHOLD)
 ```
@@ -151,11 +151,11 @@ func calculate_forestosity(chunk_coord: Vector2i):
 # 河流洪泛平原计算
 func _add_flood_buffer_fast(center: Vector2i, radius: int, floodplain: Dictionary):
     var radius_sq = radius * radius
-    
+
     for x in range(center.x - radius, center.x + radius + 1):
         for y in range(center.y - radius, center.y + radius + 1):
             var distance_sq = (x - center.x) * (x - center.x) + (y - center.y) * (y - center.y)
-            
+
             if distance_sq <= radius_sq:
                 var point = Vector2i(x, y)
                 floodplain[point] = floodplain.get(point, 0) + 1  # 记录被覆盖次数
@@ -175,16 +175,16 @@ func _add_flood_buffer_fast(center: Vector2i, radius: int, floodplain: Dictionar
 func _build_city_street(start: Vector2i, length: int, direction: int, city: City):
     # 1. 规划街道路径
     var path = _lay_out_street(start, direction, length)
-    
+
     # 2. 建造主干道
     _build_connection(path)
-    
+
     # 3. 生成分支街道
     for i in range(1, path.size()):
         if should_branch(i, length):
             var left_length = length - randi_range(1, 3)
             var right_length = length - randi_range(1, 3)
-            
+
             # 递归生成左右分支
             _build_city_street(path[i], left_length, turn_left(direction), city)
             _build_city_street(path[i], right_length, turn_right(direction), city)
@@ -196,7 +196,7 @@ func _build_city_street(start: Vector2i, length: int, direction: int, city: City
 func _pick_random_building_to_place(town_dist: int, town_size: int) -> Dictionary:
     var shop_normal = max(shop_radius, normal_distribution(shop_radius, shop_sigma))
     var park_normal = max(park_radius, normal_distribution(park_radius, park_sigma))
-    
+
     if shop_normal > town_dist:
         return select_from_category("shops")
     elif park_normal > town_dist:
@@ -243,7 +243,7 @@ class NoiseManager:
 # 增量渲染实现
 func update_canvas_rendering():
     var new_render_area = calculate_visible_area()
-    
+
     if rendered_area != new_render_area:
         clear_tiles_outside_area(new_render_area)  # 清理视口外区域
         render_terrain_in_area(new_render_area)    # 只渲染新可见区域
@@ -261,7 +261,7 @@ var chunk_creation_cooldown: float = 0.0
 func check_and_generate_chunks():
     if chunk_creation_cooldown > 0:
         return  # 冷却期内不生成
-    
+
     # 执行生成逻辑...
     chunk_creation_cooldown = COOLDOWN_TIME
 ```
@@ -300,7 +300,7 @@ func get_priority() -> int:
 func set_runtime_config(key: String, value):
     runtime_config[key] = value
     config_changed.emit("runtime", key, value)
-    
+
     # 处理特定配置的变更
     if key == "forest_size_adjust":
         recalculate_forest_regions()
