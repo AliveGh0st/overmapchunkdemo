@@ -155,6 +155,7 @@ func _ready():
 	update_viewport_size()
 	
 	# 设置各个子系统
+	setup_background()
 	setup_tilemap()
 	setup_noise_manager()
 	
@@ -251,6 +252,15 @@ func render_chunk_immediately(chunk_coord: Vector2i):
 # TileMap渲染系统设置
 # ============================================================================
 
+func setup_background():
+	"""
+	设置背景颜色
+	查找BackgroundLayer中的Background节点并设置其颜色
+	"""
+	# 通过节点路径查找背景节点
+	var background_node = get_node("../BackgroundLayer/Background")
+	if background_node and background_node is ColorRect:
+		background_node.color = Config.RenderConfig.BACKGROUND_COLOR
 func setup_tilemap():
 	"""
 	初始化TileMapLayer渲染系统

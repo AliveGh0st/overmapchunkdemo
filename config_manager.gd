@@ -34,6 +34,9 @@ class RenderConfig:
 	const CHUNK_SIZE: int = 180  ## 地图区块大小（每个区块的格子数量）
 	const BORDER_THRESHOLD: int = 11  ## 触发新区块生成的边界阈值
 	
+	## 背景颜色配置
+	const BACKGROUND_COLOR: Color = Color(0.0, 0.168627, 0.211765, 1.0)  ## 背景色 #002B36 (Solarized Dark Base03)
+
 	## TileSet 资源配置
 	const TERRAIN_TILESET_PATH: String = "res://assets/tilesets/overmap.tres"  ## 地形 TileSet 路径
 
@@ -59,7 +62,7 @@ class TerrainConfig:
 	const TERRAIN_TO_ATLAS_COORDS: Dictionary = {
 		TYPE_EMPTY: Vector2i(-1, -1),    # 空地形，不渲染
 		TYPE_LAND: Vector2i(0, 0),       # 田野瓦片坐标
-		TYPE_RIVER: Vector2i(1, 0),      # 河流瓦片坐标（非线性）
+		TYPE_RIVER: Vector2i(2, 0),      # 河流瓦片坐标（非线性）
 		TYPE_LAKE_SURFACE: Vector2i(2, 0), # 湖泊表面瓦片坐标
 		TYPE_LAKE_SHORE: Vector2i(0, 1), # 湖岸瓦片坐标
 		TYPE_FOREST: Vector2i(1, 1),     # 森林瓦片坐标
@@ -74,7 +77,7 @@ class TerrainConfig:
 	const LINEAR_TERRAIN_DEFINITIONS = [
 		{"id": "road_isolated", "symbol": "┼", "atlas": Vector2i(0, 3)},    # 0  ---- 孤立
 		{"id": "road_end_south", "symbol": "╵", "atlas": Vector2i(1, 3)},   # 1  ---n 南端点
-		{"id": "road_end_west", "symbol": "╴", "atlas": Vector2i(2, 3)},    # 2  --e- 西端点  
+		{"id": "road_end_west", "symbol": "╴", "atlas": Vector2i(2, 3)},    # 2  --e- 西端点
 		{"id": "road_ne", "symbol": "└", "atlas": Vector2i(3, 3)},          # 3  --en 东北弯道
 		{"id": "road_end_north", "symbol": "╷", "atlas": Vector2i(0, 4)},   # 4  -s-- 北端点
 		{"id": "road_ns", "symbol": "│", "atlas": Vector2i(1, 4)},          # 5  -s-n 南北直线
