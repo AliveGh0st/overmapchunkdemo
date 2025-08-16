@@ -1,8 +1,8 @@
 [gd_scene load_steps=5 format=3 uid="uid://ddeggs6ytade5"]
 
-[ext_resource type="Script" uid="uid://cgxf3jt8df4rb" path="res://overmap_renderer.gd" id="1_renderer"]
-[ext_resource type="Script" uid="uid://cbjm5xp5yueu6" path="res://overmap_player.gd" id="2_player"]
-[ext_resource type="Script" uid="uid://d28dv4lwuj1at" path="res://overmap_ui.gd" id="3_ui"]
+[ext_resource type="Script" uid="uid://cgxf3jt8df4rb" path="res://Scripts/overmap_renderer.gd" id="1_renderer"]
+[ext_resource type="Script" uid="uid://cbjm5xp5yueu6" path="res://Scripts/overmap_player.gd" id="2_player"]
+[ext_resource type="Script" uid="uid://d28dv4lwuj1at" path="res://Scripts/overmap_ui.gd" id="3_ui"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
 size = Vector2(4, 4)

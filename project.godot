@@ -11,13 +11,13 @@ config_version=5
 [application]
 
 config/name="OvermapChunkDemo"
-run/main_scene="res://overmap_system.tscn"
+run/main_scene="res://Scenes/overmap_system.tscn"
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="uid://qwlevjbu4p6"
 
 [autoload]
 
-Config="*res://config_manager.gd"
+Config="*res://Scripts/config_manager.gd"
 
 [debug]
 
