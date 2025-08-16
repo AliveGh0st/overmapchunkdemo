@@ -384,55 +384,49 @@ func check_and_generate_chunks():
 	var local_x = world_grid_x - current_chunk.x * Config.RenderConfig.CHUNK_SIZE
 	var local_y = world_grid_y - current_chunk.y * Config.RenderConfig.CHUNK_SIZE
 	
-	# 获取摄像机缩放，调整边界阈值
-	var camera_zoom = Config.get_actual_camera_zoom()
-	var zoom_multiplier = max(1.0, 2.0 / camera_zoom)  # 缩放0.5时，multiplier=4.0
-	var dynamic_border_threshold = int(Config.RenderConfig.BORDER_THRESHOLD * zoom_multiplier)
+	# 区块生成应该基于玩家实际位置，而不是摄像机缩放
+	# 使用固定的边界阈值，确保只在真正接近区块边缘时才生成新区块
+	var border_threshold = Config.RenderConfig.BORDER_THRESHOLD  # 固定使用11格
 	
-	# 确保阈值不会过大（避免在大区块中心就开始生成）
-	dynamic_border_threshold = min(dynamic_border_threshold, int(Config.RenderConfig.CHUNK_SIZE / 3.0))
-	
-	# 检查是否接近区块边缘（使用动态阈值）
+	# 检查是否接近区块边缘（使用固定阈值）
 	var need_generation = false
 	
 	# 检查4个主要方向的边缘状态
-	var near_left = local_x < dynamic_border_threshold
-	var near_right = local_x >= Config.RenderConfig.CHUNK_SIZE - dynamic_border_threshold
-	var near_top = local_y < dynamic_border_threshold
-	var near_bottom = local_y >= Config.RenderConfig.CHUNK_SIZE - dynamic_border_threshold
+	var near_left = local_x < border_threshold
+	var near_right = local_x >= Config.RenderConfig.CHUNK_SIZE - border_threshold
+	var near_top = local_y < border_threshold
+	var near_bottom = local_y >= Config.RenderConfig.CHUNK_SIZE - border_threshold
 	
-	# 计算需要预生成的区块范围（基于缩放级别）
-	var chunk_range = max(1, int(zoom_multiplier / 2.0))  # 缩放0.5时，预生成2圈区块
+	# 只生成相邻的区块（不再基于缩放级别扩展范围）
 	
-	# 生成主要方向和扩展方向的区块
-	for dx in range(-chunk_range, chunk_range + 1):
-		for dy in range(-chunk_range, chunk_range + 1):
-			if dx == 0 and dy == 0:
-				continue  # 跳过当前区块（稍后处理）
-			
-			var should_generate = false
-			
-			# 检查是否需要生成这个方向的区块
-			if dx < 0 and near_left:  # 西方向
-				should_generate = true
-			elif dx > 0 and near_right:  # 东方向
-				should_generate = true
-			elif dy < 0 and near_top:  # 北方向
-				should_generate = true
-			elif dy > 0 and near_bottom:  # 南方向
-				should_generate = true
-			elif (dx < 0 and dy < 0) and (near_left and near_top):  # 西北方向
-				should_generate = true
-			elif (dx > 0 and dy < 0) and (near_right and near_top):  # 东北方向
-				should_generate = true
-			elif (dx < 0 and dy > 0) and (near_left and near_bottom):  # 西南方向
-				should_generate = true
-			elif (dx > 0 and dy > 0) and (near_right and near_bottom):  # 东南方向
-				should_generate = true
-			
-			if should_generate:
-				generate_chunk_at(current_chunk + Vector2i(dx, dy))
-				need_generation = true
+	# 检查并生成相邻区块
+	var chunks_to_generate = []
+	
+	# 检查8个方向的相邻区块是否需要生成
+	if near_left:
+		chunks_to_generate.append(current_chunk + Vector2i(-1, 0))  # 西
+		if near_top:
+			chunks_to_generate.append(current_chunk + Vector2i(-1, -1))  # 西北
+		if near_bottom:
+			chunks_to_generate.append(current_chunk + Vector2i(-1, 1))  # 西南
+	
+	if near_right:
+		chunks_to_generate.append(current_chunk + Vector2i(1, 0))  # 东
+		if near_top:
+			chunks_to_generate.append(current_chunk + Vector2i(1, -1))  # 东北
+		if near_bottom:
+			chunks_to_generate.append(current_chunk + Vector2i(1, 1))  # 东南
+	
+	if near_top:
+		chunks_to_generate.append(current_chunk + Vector2i(0, -1))  # 北
+	
+	if near_bottom:
+		chunks_to_generate.append(current_chunk + Vector2i(0, 1))  # 南
+	
+	# 生成所有需要的区块
+	for chunk_coord in chunks_to_generate:
+		generate_chunk_at(chunk_coord)
+		need_generation = true
 	
 	# 确保当前区块已生成（安全检查）
 	generate_chunk_at(current_chunk)
