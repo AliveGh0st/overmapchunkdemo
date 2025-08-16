@@ -78,6 +78,7 @@ var overmap_special_placements: Dictionary = {} ## 特殊建筑放置记录，�
 # ============================================================================
 # 渲染系统状态
 # ============================================================================
+var ui_disabled: bool = false  ## 临时禁用UI来测试tilemap闪烁问题
 var player_marker_tile_pos: Vector2i = Vector2i(-999999, -999999)  ## 玩家标记在TileMap中的位置
 
 # 渲染优化相关
@@ -168,6 +169,15 @@ func _ready():
 	
 	# 生成初始区块（世界原点0,0区块）
 	generate_chunk_at(Vector2i(0, 0))
+	
+	# 确保玩家标记也被渲染
+	var world_pos = player_ref.global_position
+	var current_world_pos = Vector2i(
+		int(world_pos.x / Config.RenderConfig.TILE_SIZE),
+		int(world_pos.y / Config.RenderConfig.TILE_SIZE)
+	)
+	update_player_marker(current_world_pos.x, current_world_pos.y)
+	last_render_world_pos = current_world_pos
 
 # ============================================================================
 # 主循环更新
@@ -195,11 +205,47 @@ func _process(delta):
 		int(world_pos.y / Config.RenderConfig.TILE_SIZE)
 	)
 	
-	# 只有当玩家位置发生变化或标记为dirty时才重新渲染
-	if current_world_pos != last_render_world_pos or render_dirty:
-		last_render_world_pos = current_world_pos
+	# 新的简化重绘逻辑：只有在render_dirty为true时才需要重绘
+	# render_dirty只会在窗口大小变化等特殊情况下为true
+	if render_dirty:
 		render_dirty = false
 		update_canvas_rendering()
+	
+	# 玩家标记始终跟随，但不触发地形重绘
+	# 只在玩家实际移动到新格子时更新标记
+	if current_world_pos != last_render_world_pos:
+		last_render_world_pos = current_world_pos
+		update_player_marker(current_world_pos.x, current_world_pos.y)
+
+func render_chunk_immediately(chunk_coord: Vector2i):
+	"""
+	立即渲染指定区块的所有地形瓦片
+	这是区块生成后的一次性渲染，不会被清除
+	"""
+	var world_start_x = chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
+	var world_start_y = chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
+	
+	print("立即渲染区块: ", chunk_coord, " 世界坐标范围: (%d,%d) 到 (%d,%d)" % [
+		world_start_x, world_start_y, 
+		world_start_x + Config.RenderConfig.CHUNK_SIZE - 1, 
+		world_start_y + Config.RenderConfig.CHUNK_SIZE - 1
+	])
+	
+	var tiles_rendered = 0
+	
+	# 渲染整个区块的所有瓦片
+	for x_local in range(Config.RenderConfig.CHUNK_SIZE):
+		for y_local in range(Config.RenderConfig.CHUNK_SIZE):
+			var world_x = world_start_x + x_local
+			var world_y = world_start_y + y_local
+			var world_coord = Vector2i(world_x, world_y)
+			var terrain_type = terrain_data.get(world_coord, Config.TerrainConfig.TYPE_EMPTY)
+			
+			if terrain_type != Config.TerrainConfig.TYPE_EMPTY:
+				set_tile_at_world_pos(world_coord, terrain_type)
+				tiles_rendered += 1
+	
+	print("区块 %s 渲染完成，共渲染 %d 个瓦片" % [chunk_coord, tiles_rendered])
 
 # ============================================================================
 # TileMap渲染系统设置
@@ -279,18 +325,35 @@ func update_texture_filtering_for_zoom():
 	# 根据缩放级别选择合适的过滤模式
 	var filter_mode: CanvasItem.TextureFilter
 	
-	if camera_zoom <= 0.7:
-		# 小缩放时使用线性过滤，减少锯齿
-		filter_mode = CanvasItem.TEXTURE_FILTER_LINEAR
+	# 智能纹理过滤策略：
+	# - 大缩放(>1.0)：NEAREST 保持像素风格
+	# - 中等缩放(0.5-1.0)：NEAREST_WITH_MIPMAPS 减少闪烁
+	# - 小缩放(<0.5)：NEAREST_WITH_MIPMAPS_ANISOTROPIC 最佳质量
+	if camera_zoom >= 1.0:
+		filter_mode = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	elif camera_zoom >= 0.7:
+		filter_mode = CanvasItem.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 	else:
-		# 大缩放时使用最近邻过滤，保持像素艺术风格
-		filter_mode = CanvasItem.TEXTURE_FILTER_NEAREST
+		filter_mode = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	
 	# 应用过滤模式到TileMapLayer
 	tile_map_layer.texture_filter = filter_mode
 	player_tile_map_layer.texture_filter = filter_mode
 	
-	print("纹理过滤模式更新为: ", "Linear" if camera_zoom <= 0.7 else "Nearest", " (缩放: %.2f)" % camera_zoom)
+	var filter_name = ""
+	match filter_mode:
+		CanvasItem.TEXTURE_FILTER_NEAREST:
+			filter_name = "NEAREST"
+		CanvasItem.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS:
+			filter_name = "NEAREST_WITH_MIPMAPS"
+		CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS:
+			filter_name = "LINEAR_WITH_MIPMAPS"
+		CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC:
+			filter_name = "LINEAR_WITH_MIPMAPS_ANISOTROPIC"
+		_:
+			filter_name = "UNKNOWN"
+	
+	print("纹理过滤模式更新为: %s (缩放: %.2f)" % [filter_name, camera_zoom])
 
 # ============================================================================
 # 噪声生成器初始化
@@ -395,7 +458,6 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	
 	# 标记区块为已生成
 	generated_chunks[chunk_coord] = true
-	render_dirty = true  # 标记需要重新渲染
 	
 	# 计算区块在世界坐标系中的起始位置
 	var world_start_x = chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
@@ -433,6 +495,10 @@ func generate_chunk_at(chunk_coord: Vector2i):
 
 	# 5. 生成城市（在所有自然地形生成完成后）
 	place_cities(chunk_coord)
+	
+	# 6. 所有地形生成完成后，立即渲染整个区块
+	render_chunk_immediately(chunk_coord)
+	print("区块 %s 生成并渲染完成" % chunk_coord)
 
 # ============================================================================
 # 河流生成系统（完全匹配C++逻辑）
@@ -1125,117 +1191,20 @@ func calculate_urbanity(chunk_coord: Vector2i):
 
 func update_canvas_rendering():
 	"""
-	更新TileMapLayer渲染系统
-	根据玩家位置和摄像机缩放计算可见区域，只渲染必要的瓦片以优化性能
-	支持动态缩放调整：当摄像机缩放较小时，扩大渲染范围以覆盖更大的可视区域
+	简化的渲染更新系统
+	由于地形瓦片在区块生成时已永久渲染，这里只需要更新玩家标记
 	"""
 	# 获取玩家当前世界位置（游戏世界格子坐标）
 	var world_pos = player_ref.global_position
 	var center_world_x = int(world_pos.x / Config.RenderConfig.TILE_SIZE)
 	var center_world_y = int(world_pos.y / Config.RenderConfig.TILE_SIZE)
 	
-	# 获取当前摄像机缩放级别，用于调整可视范围
-	var camera_zoom = Config.get_actual_camera_zoom()
-	
-	# 计算当前可见区域范围，考虑摄像机缩放
-	var viewport_size = get_viewport().get_visible_rect().size
-	# 当缩放变小时，可视范围变大，需要渲染更多瓦片
-	var zoom_factor = 1.0 / camera_zoom  # 缩放0.5时，zoom_factor=2.0，渲染范围扩大2倍
-	var half_view_tiles_x = int((viewport_size.x * zoom_factor) / (Config.RenderConfig.TILE_SIZE * 2)) + 10  # 增加缓冲区
-	var half_view_tiles_y = int((viewport_size.y * zoom_factor) / (Config.RenderConfig.TILE_SIZE * 2)) + 10
-	
-	var render_start_x = center_world_x - half_view_tiles_x
-	var render_start_y = center_world_y - half_view_tiles_y
-	var render_end_x = center_world_x + half_view_tiles_x
-	var render_end_y = center_world_y + half_view_tiles_y
-	
-	var new_render_area = Rect2i(render_start_x, render_start_y, 
-								render_end_x - render_start_x, 
-								render_end_y - render_start_y)
-	
-	# 只更新发生变化的区域（增量渲染）
-	if rendered_area != new_render_area:
-		# 清除不再可见的区域
-		clear_tiles_outside_area(new_render_area)
-		
-		# 绘制新的可见区域
-		render_terrain_in_area(new_render_area)
-		
-		rendered_area = new_render_area
-	
-	# 更新玩家标记位置
+	# 只更新玩家标记位置
 	update_player_marker(center_world_x, center_world_y)
+	
+	print("渲染更新 - 仅更新玩家标记位置: (%d, %d)" % [center_world_x, center_world_y])
 
-func clear_tiles_outside_area(new_area: Rect2i):
-	"""
-	清除不在新渲染区域内的瓦片
-	优化性能，避免渲染屏幕外不可见的内容
-	"""
-	if rendered_area.size == Vector2i.ZERO:
-		return
-	
-	# 计算需要清除的区域
-	var areas_to_clear: Array[Rect2i] = []
-	
-	# 如果新区域完全不重叠，清除整个旧区域
-	if not rendered_area.intersects(new_area):
-		areas_to_clear.append(rendered_area)
-	else:
-		# 计算不重叠的部分（左、右、上、下四个区域）
-		
-		# 左侧需要清除的区域
-		if rendered_area.position.x < new_area.position.x:
-			areas_to_clear.append(Rect2i(
-				rendered_area.position.x,
-				rendered_area.position.y,
-				new_area.position.x - rendered_area.position.x,
-				rendered_area.size.y
-			))
-		
-		# 右侧需要清除的区域
-		if rendered_area.position.x + rendered_area.size.x > new_area.position.x + new_area.size.x:
-			areas_to_clear.append(Rect2i(
-				new_area.position.x + new_area.size.x,
-				rendered_area.position.y,
-				(rendered_area.position.x + rendered_area.size.x) - (new_area.position.x + new_area.size.x),
-				rendered_area.size.y
-			))
-		
-		# 上方需要清除的区域
-		if rendered_area.position.y < new_area.position.y:
-			var left_x = max(rendered_area.position.x, new_area.position.x)
-			var right_x = min(rendered_area.position.x + rendered_area.size.x, new_area.position.x + new_area.size.x)
-			areas_to_clear.append(Rect2i(
-				left_x,
-				rendered_area.position.y,
-				right_x - left_x,
-				new_area.position.y - rendered_area.position.y
-			))
-		
-		# 下方需要清除的区域
-		if rendered_area.position.y + rendered_area.size.y > new_area.position.y + new_area.size.y:
-			var left_x = max(rendered_area.position.x, new_area.position.x)
-			var right_x = min(rendered_area.position.x + rendered_area.size.x, new_area.position.x + new_area.size.x)
-			areas_to_clear.append(Rect2i(
-				left_x,
-				new_area.position.y + new_area.size.y,
-				right_x - left_x,
-				(rendered_area.position.y + rendered_area.size.y) - (new_area.position.y + new_area.size.y)
-			))
-	
-	# 实际清除这些区域的瓦片
-	for area in areas_to_clear:
-		for x in range(area.position.x, area.position.x + area.size.x):
-			for y in range(area.position.y, area.position.y + area.size.y):
-				tile_map_layer.erase_cell(Vector2i(x, y))
-
-func render_terrain_in_area(area: Rect2i):
-	"""在指定区域渲染地形瓦片"""
-	for x in range(area.position.x, area.position.x + area.size.x):
-		for y in range(area.position.y, area.position.y + area.size.y):
-			var world_coord = Vector2i(x, y)
-			var terrain_type = terrain_data.get(world_coord, Config.TerrainConfig.TYPE_EMPTY)
-			set_tile_at_world_pos(world_coord, terrain_type)
+# 删除了复杂的视口清除和区域渲染函数，因为地形瓦片现在永久保留
 
 func set_tile_at_world_pos(world_pos: Vector2i, terrain_type: int):
 	"""在世界坐标位置设置对应的地形瓦片，支持线性地形系统"""
@@ -1256,18 +1225,20 @@ func set_tile_at_world_pos(world_pos: Vector2i, terrain_type: int):
 		# 确保坐标有效（不是空地形的-1,-1坐标）
 		if atlas_coords.x >= 0 and atlas_coords.y >= 0:
 			tile_map_layer.set_cell(world_pos, 0, atlas_coords)
+			# 调试：第一个瓦片设置时输出信息
+			if world_pos == Vector2i(90, 90):  # 区块中心位置
+				print("设置瓦片 - 位置: %s, 地形类型: %d, 图集坐标: %s" % [world_pos, terrain_type, atlas_coords])
+		else:
+			print("警告：无效的图集坐标 %s，地形类型: %d" % [atlas_coords, terrain_type])
 
 func update_player_marker(world_x: int, world_y: int):
 	"""
 	更新玩家标记的位置（始终可见）
+	只在位置实际变化时更新，避免重复绘制
 	"""
 	var new_player_pos = Vector2i(world_x, world_y)
 	
-	# 如果位置没有变化，确保标记存在
-	if new_player_pos == player_marker_tile_pos:
-		player_tile_map_layer.set_cell(player_marker_tile_pos, 0, Config.PlayerConfig.PLAYER_ATLAS_COORDS)
-		return
-	
+	# 如果位置没有变化，直接返回，不重复绘制
 	# 清除旧位置的玩家标记
 	if player_marker_tile_pos != Vector2i(-999999, -999999):
 		player_tile_map_layer.erase_cell(player_marker_tile_pos)
@@ -1482,6 +1453,9 @@ func get_terrain_type(world_x: int, world_y: int) -> String:
 
 func get_simple_info() -> String:
 	"""返回简化的玩家位置信息，用于UI显示"""
+	if ui_disabled:
+		return ""
+		
 	var world_pos = player_ref.global_position if player_ref else Vector2.ZERO
 	var world_grid_x = int(world_pos.x / Config.RenderConfig.TILE_SIZE)
 	var world_grid_y = int(world_pos.y / Config.RenderConfig.TILE_SIZE)
@@ -1515,6 +1489,9 @@ func get_building_info_at_position(world_grid_pos: Vector2i) -> Dictionary:
 	获取指定世界坐标位置的建筑信息
 	返回包含建筑类型、特殊属性等信息的字典
 	"""
+	if ui_disabled:
+		return {"has_building": false, "terrain_type": "UI已禁用"}
+		
 	var result = {
 		"has_building": false,
 		"building_type": "",
@@ -1583,6 +1560,9 @@ func get_building_info_at_mouse(_mouse_pos: Vector2 = Vector2.ZERO) -> Dictionar
 	"""
 	获取鼠标位置的建筑信息
 	"""
+	if ui_disabled:
+		return {"has_building": false, "terrain_type": "UI已禁用"}
+		
 	# 将屏幕坐标转换为世界网格坐标
 	var camera = get_viewport().get_camera_2d()
 	if not camera:
@@ -2124,10 +2104,6 @@ func _place_building(road_pos: Vector2i, direction: int, city: City,
 	var actual_distance = sqrt(_square_dist(building_world_pos, city.pos))
 	var town_dist = int((actual_distance * 100) / max(city.size, 1))
 	
-	# 调试输出
-	if randf() < 0.02:  # 2%概率输出调试信息
-		print("建筑放置: 位置=", building_world_pos, " 城市中心=", city.pos, " 距离=", actual_distance, " town_dist=", town_dist)
-	
 	# 重试机制：最多尝试10次放置建筑
 	for retries in range(10, 0, -1):
 		var building_type = _pick_random_building_to_place(town_dist, city.size, local_placed_unique_buildings)
@@ -2144,10 +2120,6 @@ func _place_building(road_pos: Vector2i, direction: int, city: City,
 			# 标记城市独特建筑已放置
 			if building_type.has("city_unique") and building_type.city_unique:
 				local_placed_unique_buildings[building_type.id] = true
-			
-			# 调试输出
-			if randf() < 0.05:
-				print("成功放置建筑: ", building_type.id, " 位置: ", building_pos, " 使用位置数: ", used_positions.size())
 			
 			break  # 成功放置，退出重试循环
 

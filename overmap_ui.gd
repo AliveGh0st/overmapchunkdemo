@@ -28,8 +28,14 @@ class_name OvermapUI
 @onready var building_info_label: Label = $BuildingInfoLabel
 var overmap_manager: Node
 var show_enhanced_info: bool = false  # 是否显示增强信息
+var ui_disabled: bool = false  # 临时禁用所有UI来测试tilemap闪烁问题
 
 func _ready():
+	# 如果UI被禁用，隐藏所有UI元素
+	if ui_disabled:
+		visible = false
+		return
+	
 	# 查找OvermapRenderer
 	overmap_manager = get_tree().get_first_node_in_group("overmap_manager")
 	if not overmap_manager:
@@ -52,6 +58,10 @@ func _ready():
 		add_child(building_info_label)
 
 func _process(_delta):
+	# 如果UI被禁用，跳过所有处理
+	if ui_disabled:
+		return
+		
 	# 更新基本调试信息
 	if overmap_manager and debug_label:
 		if show_enhanced_info and overmap_manager.has_method("get_enhanced_info"):
@@ -97,6 +107,10 @@ func _input(event):
 	"""
 	处理输入事件，比如点击显示详细信息
 	"""
+	# 如果UI被禁用，跳过所有输入处理
+	if ui_disabled:
+		return
+		
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
 			# 右键点击显示详细建筑信息
