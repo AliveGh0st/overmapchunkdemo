@@ -104,19 +104,15 @@ class TerrainConfig:
 		return "未知线性地形"
 
 # ============================================================================
-# 颜色方案配置（仅用于玩家标记）
-# ============================================================================
-class ColorConfig:
-	## 玩家标记颜色配置
-	const PLAYER_COLOR: Color = Color.RED
-
-# ============================================================================
 # 玩家配置
 # ============================================================================
 class PlayerConfig:
 	## 玩家控制和显示配置
 	const MOVEMENT_SPEED: float = 320.0  ## 移动速度（像素/秒）
 	const GRID_ALIGNED: bool = true  ## 是否启用格子对齐
+	
+	## 玩家标记瓦片配置
+	const PLAYER_ATLAS_COORDS: Vector2i = Vector2i(0, 7)  ## 玩家标记在TileSet中的图集坐标
 
 # ============================================================================
 # 摄像机配置
@@ -274,7 +270,6 @@ class PerformanceConfig:
 ## 配置分类实例
 var render: RenderConfig = RenderConfig.new()
 var terrain: TerrainConfig = TerrainConfig.new()
-var colors: ColorConfig = ColorConfig.new()
 var player: PlayerConfig = PlayerConfig.new()
 var camera: CameraConfig = CameraConfig.new()
 var river: RiverConfig = RiverConfig.new()
@@ -383,9 +378,6 @@ func get_tile_size() -> int:
 
 func get_chunk_size() -> int:
 	return RenderConfig.CHUNK_SIZE
-
-func get_player_color() -> Color:
-	return ColorConfig.PLAYER_COLOR
 
 ## 获取地形类型对应的瓦片坐标
 func get_atlas_coords_for_terrain(terrain_type: int) -> Vector2i:

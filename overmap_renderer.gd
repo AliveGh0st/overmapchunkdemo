@@ -225,16 +225,15 @@ func setup_tilemap():
 	tile_set_resource = load_external_terrain_tileset()
 	tile_map_layer.tile_set = tile_set_resource
 	
-	# 为玩家图层设置程序生成的 TileSet
-	var player_tileset: TileSet = create_player_tileset()
-	player_tile_map_layer.tile_set = player_tileset
+	# 为玩家图层也使用相同的外部 TileSet
+	player_tile_map_layer.tile_set = tile_set_resource
 	
 	# 设置初始纹理过滤模式
 	update_texture_filtering_for_zoom()
 	
 	print("TileMapLayers created with tile_size: ", tile_set_resource.tile_size)
 	print("Using external terrain tileset from: ", Config.RenderConfig.TERRAIN_TILESET_PATH)
-	print("Using procedural player tileset")
+	print("Using external tileset for player layer as well")
 	print("Terrain layer position: ", tile_map_layer.position)
 	print("Player layer position: ", player_tile_map_layer.position)
 	
@@ -262,56 +261,6 @@ func load_external_terrain_tileset() -> TileSet:
 	var emergency_tileset = TileSet.new()
 	emergency_tileset.tile_size = Vector2i(Config.RenderConfig.TILE_SIZE, Config.RenderConfig.TILE_SIZE)
 	return emergency_tileset
-
-func create_player_tileset() -> TileSet:
-	"""
-	创建专用的玩家TileSet资源
-	只包含玩家标记瓦片，与地形图层分离以便独立控制
-	"""
-	var tileset = TileSet.new()
-	tileset.tile_size = Vector2i(Config.RenderConfig.TILE_SIZE, Config.RenderConfig.TILE_SIZE)
-	
-	# 创建TileSetAtlasSource
-	var atlas_source = TileSetAtlasSource.new()
-	
-	# 为玩家标记创建纹理
-	var tile_pixel_size = Config.RenderConfig.TILE_SIZE
-	var atlas_image = Image.create(tile_pixel_size, tile_pixel_size, false, Image.FORMAT_RGBA8)
-	
-	# 设置玩家标记参数
-	var player_color = Config.ColorConfig.PLAYER_COLOR
-	var center_x = float(tile_pixel_size) / 2.0
-	var center_y = float(tile_pixel_size) / 2.0
-	var radius = float(tile_pixel_size) / 2.0 - 0.5
-	
-	# 初始化为透明背景
-	for x in range(tile_pixel_size):
-		for y in range(tile_pixel_size):
-			atlas_image.set_pixel(x, y, Color(0, 0, 0, 0))
-	
-	# 绘制红色圆形玩家标记
-	for x_circle in range(tile_pixel_size):
-		for y_circle in range(tile_pixel_size):
-			var dx = float(x_circle) - center_x
-			var dy = float(y_circle) - center_y
-			var distance = sqrt(dx * dx + dy * dy)
-			
-			if distance <= radius:
-				atlas_image.set_pixel(x_circle, y_circle, player_color)
-	
-	# 设置纹理到atlas_source
-	var atlas_texture = ImageTexture.new()
-	atlas_texture.set_image(atlas_image)
-	atlas_source.texture = atlas_texture
-	atlas_source.texture_region_size = Vector2i(tile_pixel_size, tile_pixel_size)
-	
-	# 添加玩家标记瓦片（索引为0）
-	var atlas_coords = Vector2i(0, 0)
-	atlas_source.create_tile(atlas_coords)
-	var _tile_data = atlas_source.get_tile_data(atlas_coords, 0)
-	
-	tileset.add_source(atlas_source, 0)
-	return tileset
 
 # ============================================================================
 # 动态纹理过滤系统
@@ -1316,7 +1265,7 @@ func update_player_marker(world_x: int, world_y: int):
 	
 	# 如果位置没有变化，确保标记存在
 	if new_player_pos == player_marker_tile_pos:
-		player_tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 0))
+		player_tile_map_layer.set_cell(player_marker_tile_pos, 0, Config.PlayerConfig.PLAYER_ATLAS_COORDS)
 		return
 	
 	# 清除旧位置的玩家标记
@@ -1325,7 +1274,7 @@ func update_player_marker(world_x: int, world_y: int):
 	
 	# 设置新位置并显示标记
 	player_marker_tile_pos = new_player_pos
-	player_tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 0))
+	player_tile_map_layer.set_cell(player_marker_tile_pos, 0, Config.PlayerConfig.PLAYER_ATLAS_COORDS)
 
 func forest_noise_at(world_pos: Vector2i) -> float:
 	"""
