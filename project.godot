@@ -12,6 +12,7 @@ config_version=5
 
 config/name="OvermapChunkDemo"
 run/main_scene="res://Scenes/overmap_system.tscn"
+run/max_fps=0
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="uid://qwlevjbu4p6"
 
@@ -21,6 +22,7 @@ Config="*res://Scripts/config_manager.gd"
 
 [debug]
 
+settings/stdout/print_fps=true
 file_logging/enable_file_logging=true
 gdscript/warnings/empty_file=0
 
@@ -29,6 +31,7 @@ gdscript/warnings/empty_file=0
 window/size/viewport_width=1600
 window/size/viewport_height=800
 window/stretch/mode="canvas_items"
+window/vsync/vsync_mode=0
 
 [editor]
 

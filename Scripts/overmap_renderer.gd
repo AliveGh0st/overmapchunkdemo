@@ -76,7 +76,6 @@ var overmap_special_placements: Dictionary = {} ## 特殊建筑放置记录，�
 # ============================================================================
 # 渲染系统状态
 # ============================================================================
-var ui_disabled: bool = false ## 临时禁用UI来测试tilemap闪烁问题
 var player_marker_tile_pos: Vector2i = Vector2i(-999999, -999999) ## 玩家标记在TileMap中的位置
 
 # 渲染优化相关
@@ -1461,7 +1460,7 @@ func get_terrain_type(world_x: int, world_y: int) -> String:
 
 func get_simple_info() -> String:
 	"""返回简化的玩家位置信息，用于UI显示"""
-	if ui_disabled:
+	if not Config.UIConfig.DEBUG_UI_ENABLED:
 		return ""
 
 	var world_pos = player_ref.global_position if player_ref else Vector2.ZERO
@@ -1497,7 +1496,7 @@ func get_building_info_at_position(world_grid_pos: Vector2i) -> Dictionary:
 	获取指定世界坐标位置的建筑信息
 	返回包含建筑类型、特殊属性等信息的字典
 	"""
-	if ui_disabled:
+	if not Config.UIConfig.DEBUG_UI_ENABLED:
 		return {"has_building": false, "terrain_type": "UI已禁用"}
 
 	var result = {
@@ -1568,7 +1567,7 @@ func get_building_info_at_mouse(_mouse_pos: Vector2 = Vector2.ZERO) -> Dictionar
 	"""
 	获取鼠标位置的建筑信息
 	"""
-	if ui_disabled:
+	if not Config.UIConfig.DEBUG_UI_ENABLED:
 		return {"has_building": false, "terrain_type": "UI已禁用"}
 
 	# 将屏幕坐标转换为世界网格坐标

@@ -28,11 +28,10 @@ class_name OvermapUI
 @onready var building_info_label: Label = $BuildingInfoLabel
 var overmap_manager: Node
 var show_enhanced_info: bool = false # 是否显示增强信息
-var ui_disabled: bool = false # 临时禁用所有UI来测试tilemap闪烁问题
 
 func _ready():
 	# 如果UI被禁用，隐藏所有UI元素
-	if ui_disabled:
+	if not Config.UIConfig.DEBUG_UI_ENABLED:
 		visible = false
 		return
 
@@ -59,7 +58,7 @@ func _ready():
 
 func _process(_delta):
 	# 如果UI被禁用，跳过所有处理
-	if ui_disabled:
+	if not Config.UIConfig.DEBUG_UI_ENABLED:
 		return
 
 	# 更新基本调试信息
@@ -108,7 +107,7 @@ func _input(event):
 	处理输入事件，比如点击显示详细信息
 	"""
 	# 如果UI被禁用，跳过所有输入处理
-	if ui_disabled:
+	if not Config.UIConfig.DEBUG_UI_ENABLED:
 		return
 
 	if event is InputEventMouseButton and event.pressed:
