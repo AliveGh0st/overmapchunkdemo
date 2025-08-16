@@ -76,12 +76,6 @@ var placed_unique_buildings: Dictionary = {}    ## 已放置独特建筑记录�
 var overmap_special_placements: Dictionary = {} ## 特殊建筑放置记录，键为世界坐标Vector2i
 
 # ============================================================================
-# 玩家闪烁效果控制
-# ============================================================================
-var player_blink_timer: float = 0.0  ## 闪烁计时器
-var player_visible: bool = true  ## 当前玩家标记是否可见
-
-# ============================================================================
 # 渲染系统状态
 # ============================================================================
 var player_marker_tile_pos: Vector2i = Vector2i(-999999, -999999)  ## 玩家标记在TileMap中的位置
@@ -182,22 +176,11 @@ func _ready():
 func _process(delta):
 	"""
 	每帧更新函数
-	处理区块生成冷却、玩家闪烁效果、区块生成检查和画布渲染更新
+	处理区块生成冷却、区块生成检查和画布渲染更新
 	"""
 	# 更新区块生成冷却计时器
 	if chunk_creation_cooldown > 0:
 		chunk_creation_cooldown -= delta
-	
-	# 处理玩家标记闪烁效果
-	if Config.PlayerConfig.BLINK_ENABLED:
-		player_blink_timer += delta
-		if player_blink_timer >= Config.PlayerConfig.BLINK_INTERVAL:
-			player_blink_timer = 0.0
-			player_visible = !player_visible
-			render_dirty = true  # 标记需要重新渲染以显示闪烁效果
-	else:
-		# 如果闪烁被禁用，确保玩家始终可见
-		player_visible = true
 	
 	if not player_ref:
 		return
@@ -1333,35 +1316,22 @@ func set_tile_at_world_pos(world_pos: Vector2i, terrain_type: int):
 
 func update_player_marker(world_x: int, world_y: int):
 	"""
-	更新玩家标记的位置和可见性
-	处理闪烁效果和位置变化
+	更新玩家标记的位置（始终可见）
 	"""
 	var new_player_pos = Vector2i(world_x, world_y)
 	
-	# 调试输出
-	# print("Player marker at: ", new_player_pos, " visible: ", player_visible)
-	
-	# 如果位置没有变化，只需要处理闪烁效果
+	# 如果位置没有变化，确保标记存在
 	if new_player_pos == player_marker_tile_pos:
-		if player_visible:
-			player_tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 0))  # 显示玩家标记
-			# print("Set player tile visible at: ", player_marker_tile_pos)
-		else:
-			# 清除玩家标记瓦片（闪烁效果）
-			player_tile_map_layer.erase_cell(player_marker_tile_pos)
-			# print("Cleared player tile at: ", player_marker_tile_pos)
+		player_tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 0))
 		return
 	
 	# 清除旧位置的玩家标记
 	if player_marker_tile_pos != Vector2i(-999999, -999999):
 		player_tile_map_layer.erase_cell(player_marker_tile_pos)
-		# print("Cleared old player position: ", player_marker_tile_pos)
 	
-	# 设置新位置
+	# 设置新位置并显示标记
 	player_marker_tile_pos = new_player_pos
-	if player_visible:
-		player_tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 0))  # 设置玩家标记
-		# print("Set new player position: ", player_marker_tile_pos)
+	player_tile_map_layer.set_cell(player_marker_tile_pos, 0, Vector2i(0, 0))
 
 func forest_noise_at(world_pos: Vector2i) -> float:
 	"""

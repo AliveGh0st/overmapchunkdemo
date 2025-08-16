@@ -117,10 +117,6 @@ class PlayerConfig:
 	## 玩家控制和显示配置
 	const MOVEMENT_SPEED: float = 320.0  ## 移动速度（像素/秒）
 	const GRID_ALIGNED: bool = true  ## 是否启用格子对齐
-	
-	## 玩家标记闪烁效果
-	const BLINK_ENABLED: bool = true
-	const BLINK_INTERVAL: float = 0.1  ## 闪烁间隔时间（秒）
 
 # ============================================================================
 # 摄像机配置
