@@ -111,7 +111,7 @@ class TerrainConfig:
 # ============================================================================
 class PlayerConfig:
 	## 玩家控制和显示配置
-	const MOVEMENT_SPEED: float = 240.0 ## 移动速度（像素/秒）- 10格子/秒，与16像素格子匹配
+	const MOVEMENT_SPEED: float = 480.0 ## 移动速度（像素/秒）- 10格子/秒，与16像素格子匹配
 	const GRID_ALIGNED: bool = true ## 是否启用格子对齐
 
 	## 移动速度档位配置（可选）

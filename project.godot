@@ -30,7 +30,7 @@ gdscript/warnings/empty_file=0
 window/size/viewport_width=1600
 window/size/viewport_height=800
 window/stretch/mode="canvas_items"
-window/vsync/vsync_mode=0
+window/vsync/vsync_mode=1
 
 [editor]
 
