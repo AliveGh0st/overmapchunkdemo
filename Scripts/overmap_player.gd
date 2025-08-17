@@ -24,9 +24,9 @@ extends CharacterBody2D
 # 改进的玩家控制器，专门为overmap系统设计
 
 # 移动速度（像素/秒）
-@export var movement_speed: float = Config.player.MOVEMENT_SPEED
+@export var movement_speed: float = Config.PlayerConfig.MOVEMENT_SPEED
 # 是否启用格子对齐
-@export var grid_aligned: bool = Config.player.GRID_ALIGNED
+@export var grid_aligned: bool = Config.PlayerConfig.GRID_ALIGNED
 
 # 摄像机引用
 @onready var camera: Camera2D = $Camera2D
@@ -39,10 +39,10 @@ func _ready():
 	add_to_group("player")
 	# 确保玩家在地图中心（第0区块的中心）
 	# 计算区块中心的网格坐标，然后转换为像素位置
-	var chunk_center_grid = Config.render.CHUNK_SIZE / 2.0 # 90格子
+	var chunk_center_grid = Config.RenderConfig.CHUNK_SIZE / 2.0 # 90格子
 	global_position = Vector2(
-		chunk_center_grid * Config.render.TILE_SIZE + Config.render.TILE_SIZE / 2.0,
-		chunk_center_grid * Config.render.TILE_SIZE + Config.render.TILE_SIZE / 2.0
+		chunk_center_grid * Config.RenderConfig.TILE_SIZE + Config.RenderConfig.TILE_SIZE / 2.0,
+		chunk_center_grid * Config.RenderConfig.TILE_SIZE + Config.RenderConfig.TILE_SIZE / 2.0
 	)
 
 	# 如果启用格子对齐，调整到最近的格子中心
@@ -53,7 +53,7 @@ func _ready():
 	var collision_shape = $CollisionShape2D
 	if collision_shape:
 		var rect_shape = RectangleShape2D.new()
-		rect_shape.size = Vector2(Config.render.TILE_SIZE, Config.render.TILE_SIZE)
+		rect_shape.size = Vector2(Config.RenderConfig.TILE_SIZE, Config.RenderConfig.TILE_SIZE)
 		collision_shape.shape = rect_shape
 
 	# 给精灵添加一个简单的颜色矩形（通常应该隐藏，因为玩家在地图上由OvermapRenderer渲染）
@@ -97,9 +97,11 @@ func _physics_process(delta):
 		velocity = input_vector * movement_speed
 	else:
 		velocity = Vector2.ZERO
-		# 当停止移动时，如果启用格子对齐，则对齐到最近的格子
-		if grid_aligned:
-			snap_to_grid()
+		# 当停止移动时，如果启用格子对齐，则检查是否需要对齐到最近的格子
+		if grid_aligned and Config.PlayerConfig.GRID_SNAP_ENABLED_ON_STOP:
+			var distance_to_grid_center = get_distance_to_nearest_grid_center()
+			if distance_to_grid_center > Config.PlayerConfig.GRID_SNAP_THRESHOLD:
+				snap_to_grid()
 
 	# 移动角色
 	move_and_slide()
@@ -108,20 +110,29 @@ func snap_to_grid():
 	"""将玩家位置对齐到最近的格子中心"""
 	# 计算最近的网格中心位置
 	# 先减去半个格子大小，然后取整，再加回半个格子大小
-	var grid_x = round((global_position.x - Config.render.TILE_SIZE / 2.0) / Config.render.TILE_SIZE)
-	var grid_y = round((global_position.y - Config.render.TILE_SIZE / 2.0) / Config.render.TILE_SIZE)
+	var grid_x = round((global_position.x - Config.RenderConfig.TILE_SIZE / 2.0) / Config.RenderConfig.TILE_SIZE)
+	var grid_y = round((global_position.y - Config.RenderConfig.TILE_SIZE / 2.0) / Config.RenderConfig.TILE_SIZE)
 
 	global_position = Vector2(
-		grid_x * Config.render.TILE_SIZE + Config.render.TILE_SIZE / 2.0,
-		grid_y * Config.render.TILE_SIZE + Config.render.TILE_SIZE / 2.0
+		grid_x * Config.RenderConfig.TILE_SIZE + Config.RenderConfig.TILE_SIZE / 2.0,
+		grid_y * Config.RenderConfig.TILE_SIZE + Config.RenderConfig.TILE_SIZE / 2.0
 	)
 
 # 获取玩家在overmap网格中的位置
 func get_grid_position() -> Vector2i:
 	return Vector2i(
-		round((global_position.x - Config.render.TILE_SIZE / 2.0) / Config.render.TILE_SIZE),
-		round((global_position.y - Config.render.TILE_SIZE / 2.0) / Config.render.TILE_SIZE)
+		round((global_position.x - Config.RenderConfig.TILE_SIZE / 2.0) / Config.RenderConfig.TILE_SIZE),
+		round((global_position.y - Config.RenderConfig.TILE_SIZE / 2.0) / Config.RenderConfig.TILE_SIZE)
 	)
+
+# 计算到最近格子中心的距离
+func get_distance_to_nearest_grid_center() -> float:
+	var grid_pos = get_grid_position()
+	var grid_center = Vector2(
+		grid_pos.x * Config.RenderConfig.TILE_SIZE + Config.RenderConfig.TILE_SIZE / 2.0,
+		grid_pos.y * Config.RenderConfig.TILE_SIZE + Config.RenderConfig.TILE_SIZE / 2.0
+	)
+	return global_position.distance_to(grid_center)
 
 # ============================================================================
 # 摄像机缩放功能

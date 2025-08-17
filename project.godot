@@ -12,7 +12,6 @@ config_version=5
 
 config/name="OvermapChunkDemo"
 run/main_scene="res://Scenes/overmap_system.tscn"
-run/max_fps=0
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="uid://qwlevjbu4p6"
 

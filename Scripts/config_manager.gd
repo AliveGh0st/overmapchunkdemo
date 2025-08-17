@@ -111,11 +111,28 @@ class TerrainConfig:
 # ============================================================================
 class PlayerConfig:
 	## 玩家控制和显示配置
-	const MOVEMENT_SPEED: float = 320.0 ## 移动速度（像素/秒）
+	const MOVEMENT_SPEED: float = 240.0 ## 移动速度（像素/秒）- 10格子/秒，与16像素格子匹配
 	const GRID_ALIGNED: bool = true ## 是否启用格子对齐
+
+	## 移动速度档位配置（可选）
+	const MOVEMENT_SPEED_SLOW: float = 80.0    ## 慢速：5格子/秒
+	const MOVEMENT_SPEED_NORMAL: float = 160.0  ## 正常：10格子/秒
+	const MOVEMENT_SPEED_FAST: float = 240.0    ## 快速：15格子/秒
+
+	## 格子对齐相关配置
+	const GRID_SNAP_THRESHOLD: float = 4.0     ## 停止移动时的格子对齐阈值（像素）
+	const GRID_SNAP_ENABLED_ON_STOP: bool = true ## 停止移动时是否自动对齐格子
 
 	## 玩家标记瓦片配置
 	const PLAYER_ATLAS_COORDS: Vector2i = Vector2i(0, 7) ## 玩家标记在TileSet中的图集坐标
+
+	## 辅助函数：根据格子数/秒计算像素/秒的移动速度
+	static func calculate_speed_from_grid_per_second(grids_per_second: float) -> float:
+		return grids_per_second * RenderConfig.TILE_SIZE
+
+	## 辅助函数：根据像素/秒计算格子数/秒
+	static func calculate_grid_per_second_from_speed(pixels_per_second: float) -> float:
+		return pixels_per_second / RenderConfig.TILE_SIZE
 
 # ============================================================================
 # UI调试配置
