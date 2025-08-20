@@ -1,0 +1,174 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/*'
+
+jobs:
+  ai-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      actions: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # 获取前两次提交以便对比
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            # Pull Request 事件
+            git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }} > changed_files.txt
+          else
+            # Push 事件
+            git diff --name-only HEAD~1 HEAD > changed_files.txt
+          fi
+          echo "changed_files<<EOF" >> $GITHUB_OUTPUT
+          cat changed_files.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Get file changes
+        id: get-diff
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            DIFF=$(git diff ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }})
+          else
+            DIFF=$(git diff HEAD~1 HEAD)
+          fi
+          
+          # 截断太长的diff以避免超出API限制
+          if [ ${#DIFF} -gt 10000 ]; then
+            DIFF="${DIFF:0:10000}... [truncated]"
+          fi
+          
+          echo "diff<<EOF" >> $GITHUB_OUTPUT
+          echo "$DIFF" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: AI Code Review
+        id: ai-review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const diff = `${{ steps.get-diff.outputs.diff }}`;
+            const changedFiles = `${{ steps.changed-files.outputs.changed_files }}`;
+            
+            if (!diff.trim()) {
+              console.log('No changes to review');
+              return;
+            }
+            
+            const prompt = `
+            请作为一个资深的软件工程师，对以下代码变更进行详细的代码审查：
+            
+            变更的文件：
+            ${changedFiles}
+            
+            代码差异：
+            \`\`\`diff
+            ${diff}
+            \`\`\`
+            
+            请从以下几个方面进行审查：
+            1. 代码质量和最佳实践
+            2. 潜在的bug和安全问题
+            3. 性能优化建议
+            4. 代码可读性和维护性
+            5. 是否遵循项目的编码规范
+            6. 测试覆盖率考虑
+            
+            请用中文回复，并且：
+            - 如果发现问题，请明确指出问题所在的行数和具体建议
+            - 如果代码很好，请给出积极的反馈
+            - 提供具体的改进建议和代码示例（如果适用）
+            `;
+            
+            // 这里我们使用GitHub的AI模型进行分析
+            // 注意：需要确保有适当的权限和API访问
+            try {
+              const response = await fetch('https://api.github.com/models/gpt-4o-mini/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${{ secrets.GITHUB_TOKEN }}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  messages: [
+                    {
+                      role: 'user',
+                      content: prompt
+                    }
+                  ],
+                  max_tokens: 2000,
+                  temperature: 0.3
+                })
+              });
+              
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              
+              const data = await response.json();
+              const reviewComment = data.choices[0].message.content;
+              
+              core.setOutput('review', reviewComment);
+              
+            } catch (error) {
+              console.error('AI review failed:', error);
+              const fallbackComment = `
+              ## 🤖 AI 代码审查
+              
+              **变更文件：**
+              ${changedFiles.split('\n').map(f => f.trim()).filter(f => f).map(f => `- ${f}`).join('\n')}
+              
+              ⚠️ AI 审查暂时不可用，请手动审查以下方面：
+              - 代码质量和最佳实践
+              - 潜在的 bug 和安全问题  
+              - 性能优化机会
+              - 代码可读性和维护性
+              - 测试覆盖率
+              
+              **提交信息：** ${{ github.event.head_commit.message || github.event.pull_request.title }}
+              `;
+              
+              core.setOutput('review', fallbackComment);
+            }
+
+      - name: Comment on Pull Request
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const review = `${{ steps.ai-review.outputs.review }}`;
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🤖 AI 代码审查报告\n\n${review}`
+            });
+
+      - name: Comment on Commit (for push events)
+        if: github.event_name == 'push'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const review = `${{ steps.ai-review.outputs.review }}`;
+            
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: `## 🤖 AI 代码审查报告\n\n${review}`
+            });
