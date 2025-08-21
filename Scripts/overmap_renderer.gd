@@ -636,10 +636,7 @@ func place_rivers(p_chunk_coord: Vector2i):
 				new_rivers_buffer.append(Vector2i(randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11), 0))
 			if not has_west_neighbor and _one_in(river_placement_chance_divider):
 				new_rivers_buffer.append(Vector2i(0, randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11)))
-			if not new_rivers_buffer.is_empty():
-				river_starts_local.append(_random_entry(new_rivers_buffer))
-			else:
-				break # 避免无限循环
+			river_starts_local.append(_random_entry(new_rivers_buffer))
 
 	# 如果缺少南/东邻居，补充河流终点
 	if not has_south_neighbor or not has_east_neighbor:
@@ -649,10 +646,7 @@ func place_rivers(p_chunk_coord: Vector2i):
 				new_rivers_buffer.append(Vector2i(randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11), Config.RenderConfig.CHUNK_SIZE - 1))
 			if not has_east_neighbor and _one_in(river_placement_chance_divider):
 				new_rivers_buffer.append(Vector2i(Config.RenderConfig.CHUNK_SIZE - 1, randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11)))
-			if not new_rivers_buffer.is_empty():
-				river_ends_local.append(_random_entry(new_rivers_buffer))
-			else:
-				break # 避免无限循环
+			river_ends_local.append(_random_entry(new_rivers_buffer))
 
 	# === 实际绘制河流路径 ===
 	if river_starts_local.size() > river_ends_local.size() and not river_ends_local.is_empty():
@@ -676,9 +670,18 @@ func place_rivers(p_chunk_coord: Vector2i):
 				var start_pos = _random_entry(river_starts_copy)
 				_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
 	elif not river_ends_local.is_empty():
-		# 起点和终点数量相等，随机配对
-		river_ends_local.shuffle()
-		for i in range(min(river_starts_local.size(), river_ends_local.size())):
+		# 如果数量不等，在地图中心添加随机起点
+		if river_starts_local.size() != river_ends_local.size():
+			var quarter_size = Config.RenderConfig.CHUNK_SIZE / 4.0
+			var three_quarters_size = (Config.RenderConfig.CHUNK_SIZE * 3) / 4.0
+			var center_start = Vector2i(
+				randi_range(quarter_size, three_quarters_size),
+				randi_range(quarter_size, three_quarters_size)
+			)
+			river_starts_local.append(center_start)
+		
+		# 按索引配对绘制河流
+		for i in range(river_starts_local.size()):
 			var start_pos = river_starts_local[i]
 			var end_pos = river_ends_local[i]
 			_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
@@ -686,21 +689,20 @@ func place_rivers(p_chunk_coord: Vector2i):
 func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_local: Vector2i):
 	"""
 	在两点之间绘制单条河流路径
-	使用随机游走算法，逐步向目标移动并应用笔刷效果
-	完全匹配C++版本的place_river函数逻辑
+	完全匹配C++版本的place_river函数双步逻辑和复杂边界检查
 	"""
 	var river_chance = int(max(1.0, 1.0 / Config.RiverConfig.DENSITY_PARAM))
 	var river_scale = int(max(1.0, Config.RiverConfig.DENSITY_PARAM))
 
 	var p2_local = pa_local # 当前位置（区块内坐标）
 
-	# 主要的河流绘制循环
-	while p2_local != pb_local:
+	# 主要的河流绘制循环 - 匹配C++的do-while逻辑
+	while true:
 		# 第一步：随机游走
 		p2_local.x += randi_range(-1, 1)
 		p2_local.y += randi_range(-1, 1)
 
-		# 确保坐标在区块边界内
+		# 第一次边界处理（标准边界检查）
 		if p2_local.x < 0:
 			p2_local.x = 0
 		if p2_local.x > Config.RenderConfig.CHUNK_SIZE - 1:
@@ -710,13 +712,12 @@ func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loc
 		if p2_local.y > Config.RenderConfig.CHUNK_SIZE - 1:
 			p2_local.y = Config.RenderConfig.CHUNK_SIZE - 1
 
-		# 应用河流笔刷（第一次）
+		# 第一次应用河流笔刷
 		for i in range(-1 * river_scale, 1 * river_scale + 1):
 			for j in range(-1 * river_scale, 1 * river_scale + 1):
 				var brush_point_local = p2_local + Vector2i(j, i)
-				if brush_point_local.y >= 0 and brush_point_local.y < Config.RenderConfig.CHUNK_SIZE and brush_point_local.x >= 0 and brush_point_local.x < Config.RenderConfig.CHUNK_SIZE:
+				if _is_inbounds_local(brush_point_local):
 					var world_coord = _local_to_world(brush_point_local, p_chunk_coord)
-					# 避免在湖泊位置放置河流，按概率放置
 					if not _is_lake_at(world_coord) and _one_in(river_chance):
 						terrain_data[world_coord] = Config.TerrainConfig.TYPE_RIVER
 
@@ -738,6 +739,42 @@ func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loc
 			randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
 			p2_local.y -= 1
 
+		# 第三步：再次随机游走（C++版本的第二次随机移动）
+		p2_local.x += randi_range(-1, 1)
+		p2_local.y += randi_range(-1, 1)
+
+		# 第二次边界处理（C++版本的特殊边界逻辑）
+		if p2_local.x < 0:
+			p2_local.x = 0
+		if p2_local.x > Config.RenderConfig.CHUNK_SIZE - 1:
+			p2_local.x = Config.RenderConfig.CHUNK_SIZE - 2  # 匹配C++版本的特殊处理
+		if p2_local.y < 0:
+			p2_local.y = 0
+		if p2_local.y > Config.RenderConfig.CHUNK_SIZE - 1:
+			p2_local.y = Config.RenderConfig.CHUNK_SIZE - 1
+
+		# 第二次应用河流笔刷（复杂的边界检查）
+		for i in range(-1 * river_scale, 1 * river_scale + 1):
+			for j in range(-1 * river_scale, 1 * river_scale + 1):
+				var brush_point_local = p2_local + Vector2i(j, i)
+				var world_coord = _local_to_world(brush_point_local, p_chunk_coord)
+				
+				# 匹配C++版本的复杂边界检查逻辑
+				if (_is_inbounds_local(brush_point_local, 1) or 
+					# 特殊情况：如果靠近目标位置，即使在边界也允许
+					(abs(pb_local.y - brush_point_local.y) < 4 and abs(pb_local.x - brush_point_local.x) < 4)):
+					
+					# 如果超出区块边界，跳过
+					if not _is_inbounds_local(brush_point_local):
+						continue
+					
+					if not _is_lake_at(world_coord) and _one_in(river_chance):
+						terrain_data[world_coord] = Config.TerrainConfig.TYPE_RIVER
+		
+		# 检查是否到达目标 - 匹配C++的do-while逻辑
+		if pb_local == p2_local:
+			break
+
 # ============================================================================
 # 河流生成辅助函数
 # ============================================================================
@@ -753,7 +790,12 @@ func _local_to_world(local_pos: Vector2i, p_chunk_coord: Vector2i) -> Vector2i:
 	return Vector2i(world_start_x + local_pos.x, world_start_y + local_pos.y)
 
 func _is_inbounds_local(local_pos: Vector2i, border: int = 0) -> bool:
-	"""检查区块内坐标是否在边界范围内"""
+	"""
+	检查区块内坐标是否在边界范围内
+	border参数用于指定边界偏移，匹配C++版本的inbounds(p, 1)逻辑
+	当border=0时进行标准边界检查
+	当border=1时检查是否在距离边界至少1格的范围内
+	"""
 	return (local_pos.x >= border and local_pos.x < Config.RenderConfig.CHUNK_SIZE - border and \
 			local_pos.y >= border and local_pos.y < Config.RenderConfig.CHUNK_SIZE - border)
 
