@@ -49,6 +49,13 @@ var terrain_data: Dictionary = {} ## 地形数据存储，键为世界坐标Vect
 var generated_chunks: Dictionary = {} ## 已生成区块记录，键为区块坐标Vector2i
 
 # ============================================================================
+# 区块生成上下文
+# ============================================================================
+var current_generating_chunk: Vector2i ## 当前正在生成的区块坐标
+var current_world_start_x: int ## 当前区块的世界起始X坐标
+var current_world_start_y: int ## 当前区块的世界起始Y坐标
+
+# ============================================================================
 # 城市系统数据结构
 # ============================================================================
 ## 城市数据类
@@ -215,13 +222,14 @@ func _process(delta):
 		last_render_world_pos = current_world_pos
 		update_player_marker(current_world_pos.x, current_world_pos.y)
 
-func render_chunk_immediately(chunk_coord: Vector2i):
+func render_chunk_immediately():
 	"""
-	立即渲染指定区块的所有地形瓦片
+	立即渲染当前区块的所有地形瓦片
 	这是区块生成后的一次性渲染，不会被清除
 	"""
-	var world_start_x = chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
-	var world_start_y = chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
+	var chunk_coord = current_generating_chunk
+	var world_start_x = current_world_start_x
+	var world_start_y = current_world_start_y
 
 	print("立即渲染区块: ", chunk_coord, " 世界坐标范围: (%d,%d) 到 (%d,%d)" % [
 		world_start_x, world_start_y,
@@ -466,57 +474,80 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	# 标记区块为已生成
 	generated_chunks[chunk_coord] = true
 
-	# 计算区块在世界坐标系中的起始位置
-	var world_start_x = chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
-	var world_start_y = chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
+	# 设置当前生成上下文
+	current_generating_chunk = chunk_coord
+	current_world_start_x = chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
+	current_world_start_y = chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
 
-	print("Generating chunk at: ", chunk_coord, " world start: ", Vector2i(world_start_x, world_start_y))
+	print("Generating chunk at: ", chunk_coord, " world start: ", Vector2i(current_world_start_x, current_world_start_y))
 
 	# 生成基础地形（默认为田野）
-	for x_local in range(Config.RenderConfig.CHUNK_SIZE):
-		for y_local in range(Config.RenderConfig.CHUNK_SIZE):
-			var world_x = world_start_x + x_local
-			var world_y = world_start_y + y_local
+	_initialize_base_terrain()
 
-			terrain_data[Vector2i(world_x, world_y)] = Config.TerrainConfig.TYPE_LAND
-
-	# 按顺序生成各种地物
+	# 按顺序生成各种地物（不再需要传递chunk_coord参数）
 
 	# 1. 计算当前区块的森林密度（在生成森林之前）
-	calculate_forestosity(chunk_coord)
+	calculate_forestosity()
 
 	# 1.5. 计算当前区块的城市化程度（在生成城市之前）
-	calculate_urbanity(chunk_coord)
+	calculate_urbanity()
 
 	# 2. 生成河流
-	place_rivers(chunk_coord)
+	place_rivers()
 
 	# 2. 生成湖泊（可能会覆盖部分河流）
-	place_lakes(chunk_coord)
+	place_lakes()
 
 	# 3. 生成森林（在所有水体生成后，森林密度计算后）
-	place_forests(chunk_coord)
+	place_forests()
 
 	# 4. 生成洪范平原沼泽（在森林生成后，基于河流生成洪泛平原）
-	place_swamps(chunk_coord)
+	place_swamps()
 
 	# 5. 生成城市（在所有自然地形生成完成后）
-	place_cities(chunk_coord)
+	place_cities()
 
 	# 6. 所有地形生成完成后，立即渲染整个区块
-	render_chunk_immediately(chunk_coord)
+	render_chunk_immediately()
 	print("区块 %s 生成并渲染完成" % chunk_coord)
+
+func _initialize_base_terrain():
+	"""
+	初始化当前区块的基础地形（默认为田野）
+	"""
+	for x_local in range(Config.RenderConfig.CHUNK_SIZE):
+		for y_local in range(Config.RenderConfig.CHUNK_SIZE):
+			var world_x = current_world_start_x + x_local
+			var world_y = current_world_start_y + y_local
+			terrain_data[Vector2i(world_x, world_y)] = Config.TerrainConfig.TYPE_LAND
+
+# ============================================================================
+# 区块生成上下文辅助方法
+# ============================================================================
+
+func get_current_chunk_coord() -> Vector2i:
+	"""获取当前正在生成的区块坐标"""
+	return current_generating_chunk
+
+func get_current_world_start() -> Vector2i:
+	"""获取当前区块的世界起始坐标"""
+	return Vector2i(current_world_start_x, current_world_start_y)
+
+func local_to_world_current(local_pos: Vector2i) -> Vector2i:
+	"""将当前区块的本地坐标转换为世界坐标"""
+	return Vector2i(current_world_start_x + local_pos.x, current_world_start_y + local_pos.y)
 
 # ============================================================================
 # 河流生成系统（完全匹配C++逻辑）
 # ============================================================================
 
-func place_rivers(p_chunk_coord: Vector2i):
+func place_rivers():
 	"""
 	河流生成主函数，完全复制C++版本的place_rivers逻辑
 	处理与相邻区块的河流连接，确保河流网络的连续性
 	避免在湖泊位置生成河流，减少地形冲突
 	"""
+	var p_chunk_coord = current_generating_chunk
 	# 河流生成参数计算
 	var river_placement_chance_divider = int(max(1.0, 1.0 / Config.RiverConfig.DENSITY_PARAM))
 	var river_brush_size_factor = int(max(1.0, Config.RiverConfig.DENSITY_PARAM))
@@ -829,15 +860,16 @@ func _random_entry_removed(arr: Array):
 # 湖泊生成系统（完全匹配C++逻辑）
 # ============================================================================
 
-func place_lakes(chunk_coord: Vector2i):
+func place_lakes():
 	"""
 	湖泊生成主函数，完全匹配C++的place_lakes函数逻辑
 	使用洪水填充算法识别湖泊区域，区分湖泊表面和湖岸
 	自动连接大型湖泊到最近的河流系统
 	"""
+	var chunk_coord = current_generating_chunk
 	# 计算区块在世界坐标系中的起始位置
-	var world_start_x = chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
-	var world_start_y = chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
+	var world_start_x = current_world_start_x
+	var world_start_y = current_world_start_y
 
 	# 湖泊检测函数（匹配C++的lambda表达式）
 	var is_lake = func(p: Vector2i) -> bool:
@@ -1080,15 +1112,15 @@ func _square_dist(p1: Vector2i, p2: Vector2i) -> int:
 # 森林密度计算系统（完全匹配C++逻辑）
 # ============================================================================
 
-func calculate_forestosity(chunk_coord: Vector2i):
+func calculate_forestosity():
 	"""
 	计算当前区块的森林密度调整值
 	根据区块在世界中的位置和4个方向的森林增长率参数来动态调整森林大小
 	完全匹配C++版本的overmap::calculate_forestosity()函数
 	"""
 	# 获取当前区块的世界绝对坐标（对应C++的point_abs_om this_om = pos()）
-	var this_om_x = chunk_coord.x
-	var this_om_y = chunk_coord.y
+	var this_om_x = current_generating_chunk.x
+	var this_om_y = current_generating_chunk.y
 
 	# 重置森林大小调整值
 	forest_size_adjust = 0.0
@@ -1120,7 +1152,7 @@ func calculate_forestosity(chunk_coord: Vector2i):
 	# 调试输出（对应C++的debugmsg，可以根据需要启用）
 	# print("forestosity = %.2f at OM %d, %d" % [forestosity, this_om_x, this_om_y])
 
-func calculate_urbanity(chunk_coord: Vector2i):
+func calculate_urbanity():
 	"""
 	计算当前区块的城市化程度调整值
 	完全匹配C++版本的overmap::calculate_urbanity()函数
@@ -1143,8 +1175,8 @@ func calculate_urbanity(chunk_coord: Vector2i):
 	var urbanity_adj: float = 0.0
 
 	# 获取当前区块的世界绝对坐标（对应C++的point_abs_om this_om = pos()）
-	var this_om_x = chunk_coord.x
-	var this_om_y = chunk_coord.y
+	var this_om_x = current_generating_chunk.x
+	var this_om_y = current_generating_chunk.y
 
 	# 北方向城市化增长影响
 	if northern_urban_increase != 0 and this_om_y < 0:
@@ -1284,14 +1316,14 @@ func floodplain_noise_at(world_pos: Vector2i) -> float:
 
 	return r
 
-func place_forests(chunk_coord: Vector2i):
+func place_forests():
 	"""
 	森林生成主函数，完全匹配C++的overmap::place_forests()函数逻辑
 	只在默认地形（田野）上生成森林，根据噪声值决定森林类型
 	"""
 	# 计算区块在世界坐标系中的起始位置
-	var world_start_x = chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
-	var world_start_y = chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
+	var world_start_x = current_world_start_x
+	var world_start_y = current_world_start_y
 
 	# 默认地形类型（只在此类型上生成森林）
 	var default_terrain_type = Config.TerrainConfig.TYPE_LAND
@@ -1317,7 +1349,7 @@ func place_forests(chunk_coord: Vector2i):
 				# 生成普通森林
 				terrain_data[world_pos] = Config.TerrainConfig.TYPE_FOREST
 
-func place_swamps(chunk_coord: Vector2i):
+func place_swamps():
 	"""
 	洪范平原生成主函数，优化版本
 	基于河流位置计算洪泛平原，结合噪声生成沼泽地形
@@ -1328,9 +1360,10 @@ func place_swamps(chunk_coord: Vector2i):
 	2. 智能边界检查，减少不必要的计算
 	3. 早期退出优化
 	"""
+	var chunk_coord = current_generating_chunk
 	# 计算区块在世界坐标系中的范围
-	var world_start_x = chunk_coord.x * Config.RenderConfig.CHUNK_SIZE
-	var world_start_y = chunk_coord.y * Config.RenderConfig.CHUNK_SIZE
+	var world_start_x = current_world_start_x
+	var world_start_y = current_world_start_y
 	var world_end_x = world_start_x + Config.RenderConfig.CHUNK_SIZE
 	var world_end_y = world_start_y + Config.RenderConfig.CHUNK_SIZE
 
@@ -1648,11 +1681,12 @@ func _add_flood_buffer_fast(center: Vector2i, radius: int, floodplain: Dictionar
 # 城市生成系统（完全匹配C++逻辑）
 # ============================================================================
 
-func place_cities(chunk_coord: Vector2i):
+func place_cities():
 	"""
 	城市生成主函数，完全仿照C++版本的overmap::place_cities()函数
 	处理城市间距、大小调整和城市街道网络生成
 	"""
+	var chunk_coord = current_generating_chunk
 	var op_city_spacing = Config.CityConfig.CITY_SPACING
 	var op_city_size = Config.CityConfig.CITY_SIZE
 	var max_urbanity = Config.CityConfig.OVERMAP_MAXIMUM_URBANITY
