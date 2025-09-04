@@ -85,10 +85,10 @@ var overmap_special_placements: Dictionary = {} ## 特殊建筑放置记录，�
 # ============================================================================
 # 渲染系统状态
 # ============================================================================
-var player_marker_tile_pos: Vector2i = Vector2i(-999999, -999999) ## 玩家标记在TileMap中的位置
+var player_marker_tile_pos: Variant = null ## 玩家标记在TileMap中的位置（null表示未初始化）
 
 # 渲染优化相关
-var last_render_world_pos: Vector2i = Vector2i(-999999, -999999) ## 上次渲染时的玩家世界位置
+var last_render_world_pos: Variant = null ## 上次渲染时的玩家世界位置（null表示未初始化）
 var render_dirty: bool = true ## 是否需要重新渲染标记
 var rendered_area: Rect2i = Rect2i() ## 当前已渲染的屏幕区域
 
@@ -214,7 +214,7 @@ func _process(delta):
 
 	# 玩家标记始终跟随，但不触发地形重绘
 	# 只在玩家实际移动到新格子时更新标记
-	if current_world_pos != last_render_world_pos:
+	if last_render_world_pos == null or current_world_pos != last_render_world_pos:
 		last_render_world_pos = current_world_pos
 		update_player_marker(current_world_pos.x, current_world_pos.y)
 
@@ -1194,7 +1194,7 @@ func update_player_marker(world_x: int, world_y: int):
 
 	# 如果位置没有变化，直接返回，不重复绘制
 	# 清除旧位置的玩家标记
-	if player_marker_tile_pos != Vector2i(-999999, -999999):
+	if player_marker_tile_pos != null:
 		player_tile_map_layer.erase_cell(player_marker_tile_pos)
 
 	# 设置新位置并显示标记
