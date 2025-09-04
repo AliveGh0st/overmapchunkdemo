@@ -439,7 +439,7 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	print("Generating chunk at: ", chunk_coord, " world start: ", world_start)
 
 	# 生成基础地形（默认为田野）
-	_initialize_base_terrain()
+	initialize_base_terrain()
 
 	# 按顺序生成各种地物（不再需要传递chunk_coord参数）
 
@@ -468,7 +468,7 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	render_chunk_immediately()
 	print("区块 %s 生成并渲染完成" % chunk_coord)
 
-func _initialize_base_terrain():
+func initialize_base_terrain():
 	"""
 	初始化当前区块的基础地形（默认为田野）
 	"""
@@ -535,7 +535,7 @@ func place_rivers():
 			if is_world_coord_river.call(p_neighbour_world) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(1, 0)) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(-1, 0)):
-				if _one_in(river_placement_chance_divider) and (river_starts_local.is_empty() or \
+				if one_in(river_placement_chance_divider) and (river_starts_local.is_empty() or \
 				   river_starts_local.back().x < (i - 6) * river_brush_size_factor):
 					river_starts_local.append(p_mine_local)
 
@@ -556,7 +556,7 @@ func place_rivers():
 			if is_world_coord_river.call(p_neighbour_world) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(0, 1)) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(0, -1)):
-				if _one_in(river_placement_chance_divider) and (river_starts_local.size() == rivers_from_north_count or \
+				if one_in(river_placement_chance_divider) and (river_starts_local.size() == rivers_from_north_count or \
 				   river_starts_local.back().y < (i - 6) * river_brush_size_factor):
 					river_starts_local.append(p_mine_local)
 
@@ -611,9 +611,9 @@ func place_rivers():
 	if not has_north_neighbor or not has_west_neighbor:
 		while river_starts_local.is_empty() or river_starts_local.size() + 1 < river_ends_local.size():
 			new_rivers_buffer.clear()
-			if not has_north_neighbor and _one_in(river_placement_chance_divider):
+			if not has_north_neighbor and one_in(river_placement_chance_divider):
 				new_rivers_buffer.append(Vector2i(randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11), 0))
-			if not has_west_neighbor and _one_in(river_placement_chance_divider):
+			if not has_west_neighbor and one_in(river_placement_chance_divider):
 				new_rivers_buffer.append(Vector2i(0, randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11)))
 			river_starts_local.append(new_rivers_buffer.pick_random())
 
@@ -621,9 +621,9 @@ func place_rivers():
 	if not has_south_neighbor or not has_east_neighbor:
 		while river_ends_local.is_empty() or river_ends_local.size() + 1 < river_starts_local.size():
 			new_rivers_buffer.clear()
-			if not has_south_neighbor and _one_in(river_placement_chance_divider):
+			if not has_south_neighbor and one_in(river_placement_chance_divider):
 				new_rivers_buffer.append(Vector2i(randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11), Config.RenderConfig.CHUNK_SIZE - 1))
-			if not has_east_neighbor and _one_in(river_placement_chance_divider):
+			if not has_east_neighbor and one_in(river_placement_chance_divider):
 				new_rivers_buffer.append(Vector2i(Config.RenderConfig.CHUNK_SIZE - 1, randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11)))
 			river_ends_local.append(new_rivers_buffer.pick_random())
 
@@ -635,10 +635,10 @@ func place_rivers():
 			river_starts_local.erase(start_pos)
 			if not river_ends_local.is_empty():
 				var end_pos = river_ends_local.pop_front()
-				_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
+				draw_single_river_path(p_chunk_coord, start_pos, end_pos)
 			elif not river_ends_copy.is_empty():
 				var end_pos = river_ends_copy.pick_random()
-				_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
+				draw_single_river_path(p_chunk_coord, start_pos, end_pos)
 	elif river_ends_local.size() > river_starts_local.size() and not river_starts_local.is_empty():
 		var river_starts_copy = river_starts_local.duplicate()
 		while not river_ends_local.is_empty():
@@ -646,10 +646,10 @@ func place_rivers():
 			river_ends_local.erase(end_pos)
 			if not river_starts_local.is_empty():
 				var start_pos = river_starts_local.pop_front()
-				_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
+				draw_single_river_path(p_chunk_coord, start_pos, end_pos)
 			elif not river_starts_copy.is_empty():
 				var start_pos = river_starts_copy.pick_random()
-				_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
+				draw_single_river_path(p_chunk_coord, start_pos, end_pos)
 	elif not river_ends_local.is_empty():
 		# 如果数量不等，在地图中心添加随机起点
 		if river_starts_local.size() != river_ends_local.size():
@@ -665,9 +665,9 @@ func place_rivers():
 		for i in range(river_starts_local.size()):
 			var start_pos = river_starts_local[i]
 			var end_pos = river_ends_local[i]
-			_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
+			draw_single_river_path(p_chunk_coord, start_pos, end_pos)
 
-func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_local: Vector2i):
+func draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_local: Vector2i):
 	"""
 	在两点之间绘制单条河流路径
 	完全匹配C++版本的place_river函数双步逻辑和复杂边界检查
@@ -700,7 +700,7 @@ func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loc
 				# C++使用简单的边界检查，确保在区块内
 				if CoordinateUtils.is_local_inbounds(brush_point_local):
 					var world_coord = CoordinateUtils.local_to_world(brush_point_local, p_chunk_coord)
-					if not _is_lake_at(world_coord) and _one_in(river_chance):
+					if not is_lake_at(world_coord) and one_in(river_chance):
 						terrain_data[world_coord] = Config.TerrainConfig.TYPE_RIVER
 
 		# 第二步：向目标移动（C++原版的复杂移动逻辑）
@@ -751,7 +751,7 @@ func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loc
 						continue
 					
 					var world_coord = CoordinateUtils.local_to_world(brush_point_local, p_chunk_coord)
-					if not _is_lake_at(world_coord) and _one_in(river_chance):
+					if not is_lake_at(world_coord) and one_in(river_chance):
 						terrain_data[world_coord] = Config.TerrainConfig.TYPE_RIVER
 		
 		# 检查是否到达目标 - 匹配C++的do-while逻辑
@@ -761,14 +761,14 @@ func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loc
 # ============================================================================
 # 河流生成辅助函数
 # ============================================================================
-func _is_lake_at(world_coord: Vector2i) -> bool:
+func is_lake_at(world_coord: Vector2i) -> bool:
 	"""检查指定世界坐标是否是湖泊地形（仅检查已生成的地形类型）"""
 	var terrain_type = terrain_data.get(world_coord, Config.TerrainConfig.TYPE_EMPTY)
 	return terrain_type == Config.TerrainConfig.TYPE_LAKE_SURFACE or terrain_type == Config.TerrainConfig.TYPE_LAKE_SHORE
 
 
 
-func _one_in(chance: int) -> bool:
+func one_in(chance: int) -> bool:
 	"""
 	如果chance<=1则总是返回true，否则有1/chance的概率返回true
 	"""
@@ -800,7 +800,7 @@ func place_lakes():
 		if not inbounds:
 			return false
 		# 噪声检查
-		return _is_lake_noise_at(p)
+		return is_lake_noise_at(p)
 
 	# 已访问位置记录（对应C++的unordered_set）
 	var visited: Dictionary = {}
@@ -819,7 +819,7 @@ func place_lakes():
 				continue
 
 			# 使用洪水填充算法获取连通的湖泊区域
-			var lake_points = _point_flood_fill_4_connected(seed_point, visited, is_lake)
+			var lake_points = point_flood_fill_4_connected(seed_point, visited, is_lake)
 
 			# 过滤掉过小的湖泊
 			if lake_points.size() < Config.LakeConfig.SIZE_MIN:
@@ -863,9 +863,9 @@ func place_lakes():
 					terrain_data[p] = Config.TerrainConfig.TYPE_LAKE_SURFACE
 
 			# 连接大型湖泊到河流系统
-			_connect_lake_to_rivers_cpp_style(lake_points, chunk_coord)
+			connect_lake_to_rivers_cpp_style(lake_points, chunk_coord)
 
-func _point_flood_fill_4_connected(starting_point: Vector2i, visited: Dictionary, predicate: Callable) -> Array[Vector2i]:
+func point_flood_fill_4_connected(starting_point: Vector2i, visited: Dictionary, predicate: Callable) -> Array[Vector2i]:
 	"""
 	四连通洪水填充算法
 	使用广度优先搜索找到所有连通的满足条件的点
@@ -895,7 +895,7 @@ func _point_flood_fill_4_connected(starting_point: Vector2i, visited: Dictionary
 
 	return filled_points
 
-func _connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord: Vector2i):
+func connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord: Vector2i):
 	"""
 	湖泊河流连接系统，完全匹配C++的连接逻辑
 	找到湖泊的最北和最南点，将它们连接到最近的河流
@@ -960,10 +960,10 @@ func _connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord
 			# 将世界坐标转换为区块内坐标
 			var closest_local = CoordinateUtils.world_to_local(closest_point, chunk_coord)
 			var lake_connection_local = CoordinateUtils.world_to_local(lake_connection_point, chunk_coord)
-			_draw_single_river_path(chunk_coord, closest_local, lake_connection_local)
+			draw_single_river_path(chunk_coord, closest_local, lake_connection_local)
 
 	# 获取湖泊的最北和最南点
-	var north_south_most = _get_north_south_most_points_cpp_style(lake_points)
+	var north_south_most = get_north_south_most_points_cpp_style(lake_points)
 	var northmost = north_south_most[0]
 	var southmost = north_south_most[1]
 
@@ -974,7 +974,7 @@ func _connect_lake_to_rivers_cpp_style(lake_points: Array[Vector2i], chunk_coord
 	if CoordinateUtils.is_world_pos_in_chunk(southmost, chunk_coord):
 		connect_lake_to_qualified_river.call(southmost, false) # false表示这是最南点
 
-func _get_north_south_most_points_cpp_style(lake_points: Array[Vector2i]) -> Array[Vector2i]:
+func get_north_south_most_points_cpp_style(lake_points: Array[Vector2i]) -> Array[Vector2i]:
 	"""找到湖泊点集合中Y坐标最小（最北）和最大（最南）的点"""
 	if lake_points.is_empty():
 		return [Vector2i.ZERO, Vector2i.ZERO]
@@ -990,7 +990,7 @@ func _get_north_south_most_points_cpp_style(lake_points: Array[Vector2i]) -> Arr
 
 	return [northmost, southmost]
 
-func _is_lake_noise_at(world_pos: Vector2i) -> bool:
+func is_lake_noise_at(world_pos: Vector2i) -> bool:
 	"""检查指定世界坐标是否应该生成湖泊（基于噪声计算）"""
 	# 获取原始噪声值（范围-1到1）
 	var noise_value = noise_manager.get_lake_value(world_pos.x, world_pos.y)
@@ -1299,7 +1299,7 @@ func place_swamps():
 				)
 
 				# 优化：直接生成缓冲区内的点，无需排序
-				_add_flood_buffer_fast(check_pos, buffer_distance, floodplain,
+				add_flood_buffer_fast(check_pos, buffer_distance, floodplain,
 									  world_start_x, world_end_x, world_start_y, world_end_y)
 
 	# 步骤2：根据洪泛平原数据和噪声生成沼泽
@@ -1444,14 +1444,14 @@ func get_building_info_at_position(world_grid_pos: Vector2i) -> Dictionary:
 		if overmap_special_placements.has(world_grid_pos):
 			result.is_special = true
 			result.building_id = overmap_special_placements[world_grid_pos]
-			result.building_type = _get_building_display_name(result.building_id)
+			result.building_type = get_building_display_name(result.building_id)
 
 			# 检查是否是独特建筑
 			if globally_unique_buildings.has(result.building_id):
 				result.is_unique = true
 		else:
 			# 根据距离最近城市中心的距离推断建筑类型
-			var nearest_city = _find_nearest_city(world_grid_pos)
+			var nearest_city = find_nearest_city(world_grid_pos)
 			if nearest_city:
 				var dist_to_city = CoordinateUtils.square_distance(world_grid_pos, nearest_city.pos)
 				var town_dist = dist_to_city * 100 / max(nearest_city.size, 1)
@@ -1464,11 +1464,11 @@ func get_building_info_at_position(world_grid_pos: Vector2i) -> Dictionary:
 
 				var shop_normal = shop_radius
 				if shop_sigma > 0:
-					shop_normal = max(shop_normal, int(_normal_roll(shop_radius, shop_sigma)))
+					shop_normal = max(shop_normal, int(normal_roll(shop_radius, shop_sigma)))
 
 				var park_normal = park_radius
 				if park_sigma > 0:
-					park_normal = max(park_normal, int(_normal_roll(park_radius, park_sigma)))
+					park_normal = max(park_normal, int(normal_roll(park_radius, park_sigma)))
 
 				if shop_normal > town_dist:
 					result.building_type = "商店区"
@@ -1498,7 +1498,7 @@ func get_building_info_at_mouse(_mouse_pos: Vector2 = Vector2.ZERO) -> Dictionar
 
 	return get_building_info_at_position(world_grid_pos)
 
-func _get_building_display_name(building_id: String) -> String:
+func get_building_display_name(building_id: String) -> String:
 	"""
 	将建筑ID转换为显示名称
 	"""
@@ -1519,7 +1519,7 @@ func _get_building_display_name(building_id: String) -> String:
 
 	return name_map.get(building_id, building_id.capitalize())
 
-func _find_nearest_city(world_pos: Vector2i) -> City:
+func find_nearest_city(world_pos: Vector2i) -> City:
 	"""
 	查找距离指定位置最近的城市
 	"""
@@ -1534,7 +1534,7 @@ func _find_nearest_city(world_pos: Vector2i) -> City:
 
 	return nearest_city
 
-func _add_flood_buffer_fast(center: Vector2i, radius: int, floodplain: Dictionary,
+func add_flood_buffer_fast(center: Vector2i, radius: int, floodplain: Dictionary,
 						   world_start_x: int, world_end_x: int, world_start_y: int, world_end_y: int):
 	"""
 	优化版本的洪泛缓冲区计算，去除不必要的排序操作
@@ -1617,7 +1617,7 @@ func place_cities():
 
 	# 如果没有预定义城市，随机生成城市数量
 	if use_random_cities:
-		num_cities_on_this_overmap = _roll_remainder(omts_per_overmap * city_map_coverage_ratio / omts_per_city)
+		num_cities_on_this_overmap = roll_remainder(omts_per_overmap * city_map_coverage_ratio / omts_per_city)
 
 	var MAX_PLACEMENT_ATTEMPTS = Config.CityConfig.MAX_PLACEMENT_ATTEMPTS
 	var placement_attempts = 0
@@ -1634,11 +1634,11 @@ func place_cities():
 		if use_random_cities:
 			# 随机创建城市大小
 			var size = randi_range(op_city_size - 1, max_city_size)
-			if _one_in(Config.CityConfig.TINY_CITY_CHANCE): # 33% 微小城市
+			if one_in(Config.CityConfig.TINY_CITY_CHANCE): # 33% 微小城市
 				size = int(size * Config.CityConfig.TINY_SIZE_MULTIPLIER)
-			elif _one_in(Config.CityConfig.SMALL_CITY_CHANCE): # 33% 小城市
+			elif one_in(Config.CityConfig.SMALL_CITY_CHANCE): # 33% 小城市
 				size = int(size * Config.CityConfig.SMALL_SIZE_MULTIPLIER)
-			elif _one_in(Config.CityConfig.LARGE_CITY_CHANCE): # 17% 大城市
+			elif one_in(Config.CityConfig.LARGE_CITY_CHANCE): # 17% 大城市
 				size = int(size * Config.CityConfig.LARGE_SIZE_MULTIPLIER)
 			else: # 17% 超大城市
 				size = int(size * Config.CityConfig.HUGE_SIZE_MULTIPLIER)
@@ -1680,15 +1680,15 @@ func place_cities():
 
 			# 在4个方向上建造城市街道
 			while true:
-				_build_city_street(tmp.pos, tmp.size, cur_dir, tmp, local_placed_unique_buildings, chunk_coord)
+				build_city_street(tmp.pos, tmp.size, cur_dir, tmp, local_placed_unique_buildings, chunk_coord)
 				cur_dir = CoordinateUtils.turn_right(cur_dir)
 				if cur_dir == start_dir:
 					break
 
 	# 执行城市瓦片洪水填充
-	_flood_fill_city_tiles(chunk_coord)
+	flood_fill_city_tiles(chunk_coord)
 
-func _build_city_street(street_start: Vector2i, cs: int, direction: int, city: City,
+func build_city_street(street_start: Vector2i, cs: int, direction: int, city: City,
 						local_placed_unique_buildings: Dictionary, chunk_coord: Vector2i, block_width: int = 2):
 	"""
 	完全仿照C++版本的build_city_street函数
@@ -1712,13 +1712,13 @@ func _build_city_street(street_start: Vector2i, cs: int, direction: int, city: C
 		return
 
 	# 规划街道路径（对应C++的lay_out_street）
-	var street_path = _lay_out_street(street_start, direction, cs + 1, chunk_coord)
+	var street_path = lay_out_street(street_start, direction, cs + 1, chunk_coord)
 
 	if street_path.size() <= 1:
 		return # 路径太短，不值得建造
 
 	# 建造实际的街道（对应C++的build_connection）
-	_build_connection(street_path, chunk_coord)
+	build_connection(street_path, chunk_coord)
 
 	# 沿着既定方向增长，产生子道路并放置建筑
 	# 跳过第一个节点（起始点）- 完全匹配C++的std::next()逻辑
@@ -1741,27 +1741,27 @@ func _build_city_street(street_start: Vector2i, cs: int, direction: int, city: C
 				right += 1
 
 			# 递归建造左右分支街道
-			_build_city_street(current_pos, left, CoordinateUtils.turn_left(direction), city,
+			build_city_street(current_pos, left, CoordinateUtils.turn_left(direction), city,
 							  local_placed_unique_buildings, chunk_coord, new_width)
-			_build_city_street(current_pos, right, CoordinateUtils.turn_right(direction), city,
+			build_city_street(current_pos, right, CoordinateUtils.turn_right(direction), city,
 							  local_placed_unique_buildings, chunk_coord, new_width)
 
 			# 匹配C++版本的特殊道路检测和井盖放置逻辑
 			# 在十字交叉路口有50%概率放置井盖（对应C++ one_in(2)）
-			if _one_in(2):
+			if one_in(2):
 				var world_pos = CoordinateUtils.local_to_world(current_pos, chunk_coord)
 				var terrain_type = terrain_data.get(world_pos, Config.TerrainConfig.TYPE_EMPTY)
 				# 检查是否为道路类型（对应C++ oter->type_is(oter_type_id("road"))）
 				if terrain_type == Config.TerrainConfig.TYPE_ROAD:
 					# 可以在这里添加特殊路面标记，如井盖
 					# 对应C++ ter_set(rp, oter_road_nesw_manhole.id())
-					_add_special_road_feature(current_pos, "manhole", chunk_coord)
+					add_special_road_feature(current_pos, "manhole", chunk_coord)
 
 		# 在街道两侧放置建筑
-		if not _one_in(Config.CityConfig.BUILDING_CHANCE):
-			_place_building(current_pos, CoordinateUtils.turn_left(direction), city, local_placed_unique_buildings, chunk_coord)
-		if not _one_in(Config.CityConfig.BUILDING_CHANCE):
-			_place_building(current_pos, CoordinateUtils.turn_right(direction), city, local_placed_unique_buildings, chunk_coord)
+		if not one_in(Config.CityConfig.BUILDING_CHANCE):
+			place_building(current_pos, CoordinateUtils.turn_left(direction), city, local_placed_unique_buildings, chunk_coord)
+		if not one_in(Config.CityConfig.BUILDING_CHANCE):
+			place_building(current_pos, CoordinateUtils.turn_right(direction), city, local_placed_unique_buildings, chunk_coord)
 
 	# 如果我们还有空间，在城镇边缘做一个转弯
 	# 似乎能形成小社区
@@ -1770,12 +1770,12 @@ func _build_city_street(street_start: Vector2i, cs: int, direction: int, city: C
 	if cs >= 2 and c == 0 and street_path.size() > 0:
 		var last_pos = street_path.back()
 		var rnd_dir = CoordinateUtils.turn_random(direction)
-		_build_city_street(last_pos, cs, rnd_dir, city, local_placed_unique_buildings, chunk_coord)
-		if _one_in(5):
-			_build_city_street(last_pos, cs, CoordinateUtils.opposite_direction(rnd_dir), city,
+		build_city_street(last_pos, cs, rnd_dir, city, local_placed_unique_buildings, chunk_coord)
+		if one_in(5):
+			build_city_street(last_pos, cs, CoordinateUtils.opposite_direction(rnd_dir), city,
 							  local_placed_unique_buildings, chunk_coord, new_width)
 
-func _lay_out_street(source: Vector2i, direction: int, length: int, chunk_coord: Vector2i) -> Array[Vector2i]:
+func lay_out_street(source: Vector2i, direction: int, length: int, chunk_coord: Vector2i) -> Array[Vector2i]:
 	"""
 	规划街道路径，对应C++的lay_out_street函数
 	检查地形冲突和边界，返回实际可建造的路径
@@ -1856,7 +1856,7 @@ var linear_terrain_info: Dictionary = {} ## 存储线性地形信息，键为世
 # 线性地形系统函数
 # ============================================================================
 
-func _store_linear_terrain_info(world_pos: Vector2i, line_value: int, atlas_coords: Vector2i):
+func store_linear_terrain_info(world_pos: Vector2i, line_value: int, atlas_coords: Vector2i):
 	"""
 	存储线性地形信息，用于后续渲染和查询
 	"""
@@ -1872,7 +1872,7 @@ func get_linear_terrain_info(world_pos: Vector2i) -> Dictionary:
 	"""
 	return linear_terrain_info.get(world_pos, {})
 
-func _build_connection(path: Array[Vector2i], chunk_coord: Vector2i):
+func build_connection(path: Array[Vector2i], chunk_coord: Vector2i):
 	"""
 	建造实际的道路连接，完全匹配C++的build_connection函数逻辑
 	使用线性地形系统来设置正确的街道类型（直线、弯道、T型路口、十字路口等）
@@ -1927,7 +1927,7 @@ func _build_connection(path: Array[Vector2i], chunk_coord: Vector2i):
 			var atlas_coords = Config.TerrainConfig.get_linear_terrain_atlas_coords(line_value)
 			if atlas_coords != Vector2i(-1, -1):
 				# 存储线性地形信息用于渲染
-				_store_linear_terrain_info(world_pos, line_value, atlas_coords)
+				store_linear_terrain_info(world_pos, line_value, atlas_coords)
 
 	# 主要的连接建造循环，完全匹配C++逻辑
 	var prev_dir = DIR_INVALID
@@ -1999,7 +1999,7 @@ func _build_connection(path: Array[Vector2i], chunk_coord: Vector2i):
 		# 更新前一个方向
 		prev_dir = new_dir
 
-func _place_building(road_pos: Vector2i, direction: int, city: City,
+func place_building(road_pos: Vector2i, direction: int, city: City,
 					local_placed_unique_buildings: Dictionary, chunk_coord: Vector2i):
 	"""
 	在指定位置和方向放置建筑，完全仿照C++版本的place_building函数
@@ -2025,12 +2025,12 @@ func _place_building(road_pos: Vector2i, direction: int, city: City,
 
 	# 重试机制：最多尝试10次放置建筑
 	for retries in range(10, 0, -1):
-		var building_type = _pick_random_building_to_place(town_dist, city.size, local_placed_unique_buildings)
+		var building_type = pick_random_building_to_place(town_dist, city.size, local_placed_unique_buildings)
 
 		# 检查是否可以放置这个建筑
-		if _can_place_building_special(building_type, building_pos, building_dir, chunk_coord):
+		if canplace_building_special(building_type, building_pos, building_dir, chunk_coord):
 			# 放置建筑
-			var used_positions = _place_building_special(building_type, building_pos, building_dir, city, chunk_coord)
+			var used_positions = place_building_special(building_type, building_pos, building_dir, city, chunk_coord)
 
 			# 将使用的位置标记为城市瓦片
 			for pos in used_positions:
@@ -2042,7 +2042,7 @@ func _place_building(road_pos: Vector2i, direction: int, city: City,
 
 			break # 成功放置，退出重试循环
 
-func _add_special_road_feature(pos: Vector2i, feature_type: String, chunk_coord: Vector2i):
+func add_special_road_feature(pos: Vector2i, feature_type: String, chunk_coord: Vector2i):
 	"""
 	在道路上添加特殊地物，对应C++版本的ter_set特殊道路变种
 	简化实现：直接标记为特殊道路，不与建筑放置系统冲突
@@ -2056,7 +2056,7 @@ func _add_special_road_feature(pos: Vector2i, feature_type: String, chunk_coord:
 		_:
 			pass # 其他特殊道路特征
 
-func _can_place_building_special(building_type: Dictionary, pos: Vector2i, _direction: int, chunk_coord: Vector2i) -> bool:
+func canplace_building_special(building_type: Dictionary, pos: Vector2i, _direction: int, chunk_coord: Vector2i) -> bool:
 	var world_pos = CoordinateUtils.local_to_world(pos, chunk_coord)
 	var terrain_type = terrain_data.get(world_pos, Config.TerrainConfig.TYPE_EMPTY)
 
@@ -2087,7 +2087,7 @@ func _can_place_building_special(building_type: Dictionary, pos: Vector2i, _dire
 
 	return true
 
-func _place_building_special(building_type: Dictionary, pos: Vector2i, _direction: int, _city: City, chunk_coord: Vector2i) -> Array[Vector2i]:
+func place_building_special(building_type: Dictionary, pos: Vector2i, _direction: int, _city: City, chunk_coord: Vector2i) -> Array[Vector2i]:
 	"""
 	放置特殊建筑，简化版的place_special
 	"""
@@ -2114,7 +2114,7 @@ func _place_building_special(building_type: Dictionary, pos: Vector2i, _directio
 
 	return used_positions
 
-func _pick_random_building_to_place(town_dist: int, town_size: int, placed_unique: Dictionary) -> Dictionary:
+func pick_random_building_to_place(town_dist: int, town_size: int, placed_unique: Dictionary) -> Dictionary:
 	"""
 	选择要放置的随机建筑类型，完全仿照C++版本的pick_random_building_to_place
 	"""
@@ -2129,11 +2129,11 @@ func _pick_random_building_to_place(town_dist: int, town_size: int, placed_uniqu
 	# 公园几乎可以保证在城市任何地方都有生成概率
 	var shop_normal = shop_radius
 	if shop_sigma > 0:
-		shop_normal = max(shop_normal, int(_normal_roll(shop_radius, shop_sigma)))
+		shop_normal = max(shop_normal, int(normal_roll(shop_radius, shop_sigma)))
 
 	var park_normal = park_radius
 	if park_sigma > 0:
-		park_normal = max(park_normal, int(_normal_roll(park_radius, park_sigma)))
+		park_normal = max(park_normal, int(normal_roll(park_radius, park_sigma)))
 
 	# 根据距离选择建筑类型
 	var building_category: String
@@ -2175,7 +2175,7 @@ func _pick_random_building_to_place(town_dist: int, town_size: int, placed_uniqu
 	# 如果找不到合适的建筑，返回默认房屋
 	return {"id": "house_small", "size": Vector2i(1, 1), "city_unique": false, "globally_unique": false}
 
-func _normal_roll(mean: float, sigma: float) -> float:
+func normal_roll(mean: float, sigma: float) -> float:
 	"""
 	正态分布随机数生成（简化版Box-Muller变换）
 	"""
@@ -2188,7 +2188,7 @@ func _normal_roll(mean: float, sigma: float) -> float:
 	var z = sqrt(-2.0 * log(u1)) * cos(2.0 * PI * u2)
 	return mean + sigma * z
 
-func _can_place_building(pos: Vector2i, _building_type: Dictionary, chunk_coord: Vector2i) -> bool:
+func canplace_building(pos: Vector2i, _building_type: Dictionary, chunk_coord: Vector2i) -> bool:
 	"""
 	检查是否可以在指定位置放置建筑
 	"""
@@ -2198,10 +2198,10 @@ func _can_place_building(pos: Vector2i, _building_type: Dictionary, chunk_coord:
 	# 只能在空地上建造
 	return terrain_type == Config.TerrainConfig.TYPE_LAND
 
-func _can_place_special(special: Dictionary, pos: Vector2i, direction: int,
+func canplace_special(special: Dictionary, pos: Vector2i, direction: int,
 						chunk_coord: Vector2i, must_be_unexplored: bool = false) -> bool:
 	"""
-	检查特殊建筑是否可以放置，仿照C++版本的can_place_special
+	检查特殊建筑是否可以放置，仿照C++版本的canplace_special
 	"""
 	if direction < 0 or direction > 3:
 		return false
@@ -2234,11 +2234,11 @@ func _can_place_special(special: Dictionary, pos: Vector2i, direction: int,
 	# 检查所需的地形类型
 	var required_locations = special.get("required_locations", [])
 	for location in required_locations:
-		var check_pos = pos + _rotate_point(location.get("offset", Vector2i.ZERO), direction)
+		var check_pos = pos + rotate_point(location.get("offset", Vector2i.ZERO), direction)
 		var world_pos = CoordinateUtils.local_to_world(check_pos, chunk_coord)
 
 		# 检查边界
-		if not _in_bounds(check_pos, chunk_coord):
+		if not in_bounds(check_pos, chunk_coord):
 			return false
 
 		# 如果必须未探索，检查是否已生成子地图
@@ -2255,7 +2255,7 @@ func _can_place_special(special: Dictionary, pos: Vector2i, direction: int,
 
 	return true
 
-func _place_special(special: Dictionary, pos: Vector2i, direction: int, _city: City,
+func place_special(special: Dictionary, pos: Vector2i, direction: int, _city: City,
 					chunk_coord: Vector2i, must_be_unexplored: bool = false, force: bool = false) -> Array[Vector2i]:
 	"""
 	放置特殊建筑，仿照C++版本的place_special
@@ -2264,7 +2264,7 @@ func _place_special(special: Dictionary, pos: Vector2i, direction: int, _city: C
 		return []
 
 	if not force:
-		if not _can_place_special(special, pos, direction, chunk_coord, must_be_unexplored):
+		if not canplace_special(special, pos, direction, chunk_coord, must_be_unexplored):
 			return []
 
 	var placed_positions: Array[Vector2i] = []
@@ -2281,7 +2281,7 @@ func _place_special(special: Dictionary, pos: Vector2i, direction: int, _city: C
 	# 放置建筑的所有组件
 	var building_locations = special.get("locations", [ {"offset": Vector2i.ZERO}])
 	for location in building_locations:
-		var building_pos = pos + _rotate_point(location.get("offset", Vector2i.ZERO), direction)
+		var building_pos = pos + rotate_point(location.get("offset", Vector2i.ZERO), direction)
 		var world_pos = CoordinateUtils.local_to_world(building_pos, chunk_coord)
 
 		# 设置地形
@@ -2309,7 +2309,7 @@ func _place_special(special: Dictionary, pos: Vector2i, direction: int, _city: C
 
 	return placed_positions
 
-func _rotate_point(point: Vector2i, direction: int) -> Vector2i:
+func rotate_point(point: Vector2i, direction: int) -> Vector2i:
 	"""
 	根据方向旋转点，对应C++中的om_direction::rotate
 	"""
@@ -2325,7 +2325,7 @@ func _rotate_point(point: Vector2i, direction: int) -> Vector2i:
 		_:
 			return point
 
-func _straight_path(source: Vector2i, direction: int, length: int) -> Array[Vector2i]:
+func straight_path(source: Vector2i, direction: int, length: int) -> Array[Vector2i]:
 	"""
 	生成直线路径，对应C++版本的straight_path
 	"""
@@ -2344,14 +2344,14 @@ func _straight_path(source: Vector2i, direction: int, length: int) -> Array[Vect
 
 	return path
 
-func _in_bounds(pos: Vector2i, _chunk_coord: Vector2i) -> bool:
+func in_bounds(pos: Vector2i, _chunk_coord: Vector2i) -> bool:
 	"""
 	检查位置是否在区块边界内
 	"""
 	return pos.x >= 0 and pos.x < Config.RenderConfig.CHUNK_SIZE and \
 		   pos.y >= 0 and pos.y < Config.RenderConfig.CHUNK_SIZE
 
-func _flood_fill_city_tiles(_chunk_coord: Vector2i):
+func flood_fill_city_tiles(_chunk_coord: Vector2i):
 	"""
 	城市瓦片洪水填充，完全仿照C++版本的flood_fill_city_tiles()函数
 	寻找被城市瓦片包围的区域并将其标记为城市的一部分
@@ -2387,7 +2387,7 @@ func _flood_fill_city_tiles(_chunk_coord: Vector2i):
 				return true
 
 			# 连接到此点且不属于城市的所有点
-			var area = _point_flood_fill_4_connected(checked, visited, is_unchecked)
+			var area = point_flood_fill_4_connected(checked, visited, is_unchecked)
 			if not enclosed[0]:
 				continue
 
@@ -2399,7 +2399,7 @@ func _flood_fill_city_tiles(_chunk_coord: Vector2i):
 # 城市生成辅助函数
 # ============================================================================
 
-func _roll_remainder(value: float) -> int:
+func roll_remainder(value: float) -> int:
 	"""
 	对浮点数进行概率性向上取整
 	模拟C++版本的roll_remainder函数
