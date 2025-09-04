@@ -453,7 +453,7 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	place_rivers()
 
 	# 2. 生成湖泊（可能会覆盖部分河流）
-	place_lakes()
+	# place_lakes()
 
 	# 3. 生成森林（在所有水体生成后，森林密度计算后）
 	place_forests()
@@ -520,7 +520,6 @@ func place_rivers():
 	# === 处理与相邻区块的河流连接 ===
 
 	# 1. 处理北邻区块的河流连接
-	var starts_from_north_added = 0
 	var north_chunk_coord = p_chunk_coord + Vector2i(0, -1)
 	if generated_chunks.has(north_chunk_coord):
 		for i in range(2, Config.RenderConfig.CHUNK_SIZE - 2):
@@ -532,20 +531,17 @@ func place_rivers():
 			if is_world_coord_river.call(p_neighbour_world):
 				terrain_data[p_mine_world] = Config.TerrainConfig.TYPE_RIVER
 
-			# 检查是否需要创建新的河流起点
+			# 检查是否需要创建新的河流起点（匹配C++逻辑：无数量限制，仅依靠概率和距离）
 			if is_world_coord_river.call(p_neighbour_world) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(1, 0)) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(-1, 0)):
-				if starts_from_north_added < 3 and \
-				   _one_in(river_placement_chance_divider) and (river_starts_local.is_empty() or \
-				   river_starts_local.back().x < (i - 8) * river_brush_size_factor):
+				if _one_in(river_placement_chance_divider) and (river_starts_local.is_empty() or \
+				   river_starts_local.back().x < (i - 6) * river_brush_size_factor):
 					river_starts_local.append(p_mine_local)
-					starts_from_north_added += 1
 
 	var rivers_from_north_count = river_starts_local.size()
 
 	# 2. 处理西邻区块的河流连接
-	var starts_from_west_added = 0
 	var west_chunk_coord = p_chunk_coord + Vector2i(-1, 0)
 	if generated_chunks.has(west_chunk_coord):
 		for i in range(2, Config.RenderConfig.CHUNK_SIZE - 2):
@@ -556,17 +552,15 @@ func place_rivers():
 			if is_world_coord_river.call(p_neighbour_world):
 				terrain_data[p_mine_world] = Config.TerrainConfig.TYPE_RIVER
 
+			# 匹配C++逻辑：无数量限制
 			if is_world_coord_river.call(p_neighbour_world) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(0, 1)) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(0, -1)):
-				if starts_from_west_added < 3 and \
-				   _one_in(river_placement_chance_divider) and (river_starts_local.size() == rivers_from_north_count or \
-				   river_starts_local.back().y < (8) * river_brush_size_factor):
+				if _one_in(river_placement_chance_divider) and (river_starts_local.size() == rivers_from_north_count or \
+				   river_starts_local.back().y < (i - 6) * river_brush_size_factor):
 					river_starts_local.append(p_mine_local)
-					starts_from_west_added += 1
 
 	# 3. 处理南邻区块的河流连接
-	var ends_from_south_added = 0
 	var south_chunk_coord = p_chunk_coord + Vector2i(0, 1)
 	if generated_chunks.has(south_chunk_coord):
 		for i in range(2, Config.RenderConfig.CHUNK_SIZE - 2):
@@ -577,19 +571,17 @@ func place_rivers():
 			if is_world_coord_river.call(p_neighbour_world):
 				terrain_data[p_mine_world] = Config.TerrainConfig.TYPE_RIVER
 
+			# 匹配C++逻辑：无数量限制，无概率检查（终点）
 			if is_world_coord_river.call(p_neighbour_world) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(1, 0)) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(-1, 0)):
-				if ends_from_south_added < 3 and \
-				   (river_ends_local.is_empty() or \
-				   river_ends_local.back().x < (i - 8)):
+				if river_ends_local.is_empty() or \
+				   river_ends_local.back().x < (i - 6):
 					river_ends_local.append(p_mine_local)
-					ends_from_south_added += 1
 
 	var rivers_to_south_count = river_ends_local.size()
 
 	# 4. 处理东邻区块的河流连接
-	var ends_from_east_added = 0
 	var east_chunk_coord = p_chunk_coord + Vector2i(1, 0)
 	if generated_chunks.has(east_chunk_coord):
 		for i in range(2, Config.RenderConfig.CHUNK_SIZE - 2):
@@ -600,14 +592,13 @@ func place_rivers():
 			if is_world_coord_river.call(p_neighbour_world):
 				terrain_data[p_mine_world] = Config.TerrainConfig.TYPE_RIVER
 
+			# 匹配C++逻辑：无数量限制，无概率检查（终点）
 			if is_world_coord_river.call(p_neighbour_world) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(0, 1)) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(0, -1)):
-				if ends_from_east_added < 3 and \
-				   (river_ends_local.size() == rivers_to_south_count or \
-				   river_ends_local.back().y < (i - 8)):
+				if river_ends_local.size() == rivers_to_south_count or \
+				   river_ends_local.back().y < (i - 6):
 					river_ends_local.append(p_mine_local)
-					ends_from_east_added += 1
 
 	# === 平衡河流起点和终点数量 ===
 	var new_rivers_buffer: Array[Vector2i] = []
@@ -624,7 +615,7 @@ func place_rivers():
 				new_rivers_buffer.append(Vector2i(randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11), 0))
 			if not has_west_neighbor and _one_in(river_placement_chance_divider):
 				new_rivers_buffer.append(Vector2i(0, randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11)))
-			river_starts_local.append(_random_entry(new_rivers_buffer))
+			river_starts_local.append(new_rivers_buffer.pick_random())
 
 	# 如果缺少南/东邻居，补充河流终点
 	if not has_south_neighbor or not has_east_neighbor:
@@ -634,28 +625,30 @@ func place_rivers():
 				new_rivers_buffer.append(Vector2i(randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11), Config.RenderConfig.CHUNK_SIZE - 1))
 			if not has_east_neighbor and _one_in(river_placement_chance_divider):
 				new_rivers_buffer.append(Vector2i(Config.RenderConfig.CHUNK_SIZE - 1, randi_range(10, Config.RenderConfig.CHUNK_SIZE - 11)))
-			river_ends_local.append(_random_entry(new_rivers_buffer))
+			river_ends_local.append(new_rivers_buffer.pick_random())
 
 	# === 实际绘制河流路径 ===
 	if river_starts_local.size() > river_ends_local.size() and not river_ends_local.is_empty():
 		var river_ends_copy = river_ends_local.duplicate()
 		while not river_starts_local.is_empty():
-			var start_pos = _random_entry_removed(river_starts_local)
+			var start_pos = river_starts_local.pick_random()
+			river_starts_local.erase(start_pos)
 			if not river_ends_local.is_empty():
 				var end_pos = river_ends_local.pop_front()
 				_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
 			elif not river_ends_copy.is_empty():
-				var end_pos = _random_entry(river_ends_copy)
+				var end_pos = river_ends_copy.pick_random()
 				_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
 	elif river_ends_local.size() > river_starts_local.size() and not river_starts_local.is_empty():
 		var river_starts_copy = river_starts_local.duplicate()
 		while not river_ends_local.is_empty():
-			var end_pos = _random_entry_removed(river_ends_local)
+			var end_pos = river_ends_local.pick_random()
+			river_ends_local.erase(end_pos)
 			if not river_starts_local.is_empty():
 				var start_pos = river_starts_local.pop_front()
 				_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
 			elif not river_starts_copy.is_empty():
-				var start_pos = _random_entry(river_starts_copy)
+				var start_pos = river_starts_copy.pick_random()
 				_draw_single_river_path(p_chunk_coord, start_pos, end_pos)
 	elif not river_ends_local.is_empty():
 		# 如果数量不等，在地图中心添加随机起点
@@ -704,6 +697,7 @@ func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loc
 		for i in range(-1 * river_scale, 1 * river_scale + 1):
 			for j in range(-1 * river_scale, 1 * river_scale + 1):
 				var brush_point_local = p2_local + Vector2i(j, i)
+				# C++使用简单的边界检查，确保在区块内
 				if CoordinateUtils.is_local_inbounds(brush_point_local):
 					var world_coord = CoordinateUtils.local_to_world(brush_point_local, p_chunk_coord)
 					if not _is_lake_at(world_coord) and _one_in(river_chance):
@@ -745,17 +739,18 @@ func _draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loc
 		for i in range(-1 * river_scale, 1 * river_scale + 1):
 			for j in range(-1 * river_scale, 1 * river_scale + 1):
 				var brush_point_local = p2_local + Vector2i(j, i)
-				var world_coord = CoordinateUtils.local_to_world(brush_point_local, p_chunk_coord)
 				
 				# 匹配C++版本的复杂边界检查逻辑
+				# 要么距离边界至少1格，要么接近目标位置
 				if (CoordinateUtils.is_local_inbounds(brush_point_local, 1) or 
 					# 特殊情况：如果靠近目标位置，即使在边界也允许
 					(abs(pb_local.y - brush_point_local.y) < 4 and abs(pb_local.x - brush_point_local.x) < 4)):
 					
-					# 如果超出区块边界，跳过
+					# 关键：如果超出区块边界，必须跳过（匹配C++的continue）
 					if not CoordinateUtils.is_local_inbounds(brush_point_local):
 						continue
 					
+					var world_coord = CoordinateUtils.local_to_world(brush_point_local, p_chunk_coord)
 					if not _is_lake_at(world_coord) and _one_in(river_chance):
 						terrain_data[world_coord] = Config.TerrainConfig.TYPE_RIVER
 		
@@ -775,28 +770,13 @@ func _is_lake_at(world_coord: Vector2i) -> bool:
 
 func _one_in(chance: int) -> bool:
 	"""
-	概率检查函数，完全匹配C++版本的逻辑
 	如果chance<=1则总是返回true，否则有1/chance的概率返回true
 	"""
 	if chance <= 1:
 		return true
 	return randi_range(0, chance - 1) == 0
 
-func _random_entry(arr: Array):
-	"""从数组中随机选择一个元素"""
-	if arr.is_empty():
-		return Vector2i.ZERO
-	return arr[randi() % arr.size()]
 
-func _random_entry_removed(arr: Array):
-	"""从数组中随机选择并移除一个元素"""
-	if arr.is_empty():
-		push_warning("Attempted to remove random entry from empty array.")
-		return Vector2.ZERO
-	var idx = randi() % arr.size()
-	var entry = arr[idx]
-	arr.remove_at(idx)
-	return entry
 
 # ============================================================================
 # 湖泊生成系统（完全匹配C++逻辑）
@@ -1683,7 +1663,7 @@ func place_cities():
 				tmp.size = size
 		else:
 			placement_attempts = 0
-			tmp = _random_entry(cities_to_place)
+			tmp = cities_to_place.pick_random()
 			p_local = tmp.pos
 			var p_world = CoordinateUtils.local_to_world(p_local, chunk_coord)
 			terrain_data[p_world] = Config.TerrainConfig.TYPE_ROAD
@@ -2171,7 +2151,7 @@ func _pick_random_building_to_place(town_dist: int, town_size: int, placed_uniqu
 	# 循环选择，直到找到有效的建筑
 	var attempts = 0
 	while attempts < 100: # 防止无限循环
-		var ret = _random_entry(available_buildings)
+		var ret = available_buildings.pick_random()
 
 		# 检查独特性约束
 		var existing_unique = false
