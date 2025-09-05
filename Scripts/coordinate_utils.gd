@@ -205,6 +205,13 @@ static func get_circular_area_bounded(center: Vector2i, radius: int,
 # ============================================================================
 # 实用工具函数
 # ============================================================================
+## 概率性向上取整
+static func roll_remainder(value: float) -> int:
+	var base = int(value)
+	var remainder = value - base
+	if randf() < remainder:
+		return base + 1
+	return base
 
 ## 获取区块内玩家的相对位置
 static func get_player_local_position_in_chunk(world_grid_pos: Vector2i, chunk_coord: Vector2i) -> Vector2i:
