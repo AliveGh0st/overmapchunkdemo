@@ -450,7 +450,7 @@ func generate_chunk_at(chunk_coord: Vector2i):
 	place_rivers()
 
 	# 2. 生成湖泊（可能会覆盖部分河流）
-	# place_lakes()
+	place_lakes()
 
 	# 3. 生成森林（在所有水体生成后，森林密度计算后）
 	place_forests()
@@ -568,7 +568,6 @@ func place_rivers():
 			if is_world_coord_river.call(p_neighbour_world):
 				terrain_data[p_mine_world] = Config.TerrainConfig.TYPE_RIVER
 
-			# 匹配C++逻辑：无数量限制，无概率检查（终点）
 			if is_world_coord_river.call(p_neighbour_world) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(1, 0)) and \
 			   is_world_coord_river.call(p_neighbour_world + Vector2i(-1, 0)):
@@ -674,7 +673,7 @@ func draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loca
 
 	var p2_local = pa_local # 当前位置（区块内坐标）
 
-	# 主要的河流绘制循环 - 匹配C++的do-while逻辑
+	# 主要的河流绘制循环
 	while true:
 		# 第一步：随机游走
 		p2_local.x += randi_range(-1, 1)
@@ -694,13 +693,13 @@ func draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loca
 		for i in range(-1 * river_scale, 1 * river_scale + 1):
 			for j in range(-1 * river_scale, 1 * river_scale + 1):
 				var brush_point_local = p2_local + Vector2i(j, i)
-				# C++使用简单的边界检查，确保在区块内
+				# 边界检查，确保在区块内
 				if CoordinateUtils.is_local_inbounds(brush_point_local):
 					var world_coord = CoordinateUtils.local_to_world(brush_point_local, p_chunk_coord)
 					if not is_lake_at(world_coord) and one_in(river_chance):
 						terrain_data[world_coord] = Config.TerrainConfig.TYPE_RIVER
 
-		# 第二步：向目标移动（C++原版的复杂移动逻辑）
+		# 第二步：向目标移动
 		if pb_local.x > p2_local.x and (randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 1.2) - 1) < pb_local.x - p2_local.x or \
 		(randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 0.2) - 1) > pb_local.x - p2_local.x and \
 			randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 0.2) - 1) > abs(pb_local.y - p2_local.y))):
@@ -718,11 +717,11 @@ func draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loca
 			randi_range(0, int(Config.RenderConfig.CHUNK_SIZE * 0.2) - 1) > abs(p2_local.x - pb_local.x))):
 			p2_local.y -= 1
 
-		# 第三步：再次随机游走（C++版本的第二次随机移动）
+		# 第三步：再次随机游走
 		p2_local.x += randi_range(-1, 1)
 		p2_local.y += randi_range(-1, 1)
 
-		# 第二次边界处理（C++版本的特殊边界逻辑）
+		# 第二次边界处理
 		if p2_local.x < 0:
 			p2_local.x = 0
 		if p2_local.x > Config.RenderConfig.CHUNK_SIZE - 1:
@@ -732,18 +731,19 @@ func draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loca
 		if p2_local.y > Config.RenderConfig.CHUNK_SIZE - 1:
 			p2_local.y = Config.RenderConfig.CHUNK_SIZE - 1
 
-		# 第二次应用河流笔刷（复杂的边界检查）
+		# 第二次应用河流笔刷
 		for i in range(-1 * river_scale, 1 * river_scale + 1):
 			for j in range(-1 * river_scale, 1 * river_scale + 1):
 				var brush_point_local = p2_local + Vector2i(j, i)
 				
-				# 匹配C++版本的复杂边界检查逻辑
-				# 要么距离边界至少1格，要么接近目标位置
-				if (CoordinateUtils.is_local_inbounds(brush_point_local, 1) or 
-					# 特殊情况：如果靠近目标位置，即使在边界也允许
-					(abs(pb_local.y - brush_point_local.y) < 4 and abs(pb_local.x - brush_point_local.x) < 4)):
-					
-					# 关键：如果超出区块边界，必须跳过（匹配C++的continue）
+				# 完全匹配C++版本的复杂边界检查逻辑：
+				# 我们不希望河岸触及地图边缘，除非那是河流要去的地方！
+				var is_within_safe_boundary = CoordinateUtils.is_local_inbounds(brush_point_local, 1)
+				var is_near_target = (abs(pb_local.y - brush_point_local.y) < 4 and abs(pb_local.x - brush_point_local.x) < 4)
+				
+				# 只有在安全边界内，或者接近目标点时才允许绘制
+				if is_within_safe_boundary or is_near_target:
+					# 如果完全超出区块边界，跳过
 					if not CoordinateUtils.is_local_inbounds(brush_point_local):
 						continue
 					
@@ -751,7 +751,7 @@ func draw_single_river_path(p_chunk_coord: Vector2i, pa_local: Vector2i, pb_loca
 					if not is_lake_at(world_coord) and one_in(river_chance):
 						terrain_data[world_coord] = Config.TerrainConfig.TYPE_RIVER
 		
-		# 检查是否到达目标 - 匹配C++的do-while逻辑
+		# 检查是否到达目标
 		if pb_local == p2_local:
 			break
 
@@ -789,7 +789,7 @@ func place_lakes():
 	# 计算区块在世界坐标系中的起始位置
 	var world_start = CoordinateUtils.chunk_to_world_start(chunk_coord)
 
-	# 湖泊检测函数（匹配C++的lambda表达式）
+	# 湖泊检测函数
 	var is_lake = func(p: Vector2i) -> bool:
 		# 边界检查（允许一定的边界扩展）
 		var inbounds = p.x > world_start.x - 5 and p.y > world_start.y - 5 and \
@@ -799,7 +799,7 @@ func place_lakes():
 		# 噪声检查
 		return is_lake_noise_at(p)
 
-	# 已访问位置记录（对应C++的unordered_set）
+	# 已访问位置记录
 	var visited: Dictionary = {}
 
 	# 遍历区块内所有位置寻找湖泊种子点
@@ -827,7 +827,7 @@ func place_lakes():
 			for p in lake_points:
 				lake_set[p] = true
 
-			# 将所有河流点添加到湖泊集合（C++逻辑）
+			# 将所有河流点添加到湖泊集合
 			for x in range(Config.RenderConfig.CHUNK_SIZE):
 				for y in range(Config.RenderConfig.CHUNK_SIZE):
 					var p = Vector2i(world_start.x + x, world_start.y + y)
@@ -1001,21 +1001,16 @@ func is_lake_noise_at(world_pos: Vector2i) -> bool:
 
 
 # ============================================================================
-# 跨区块河流连接系统
-# ============================================================================
-
-# ============================================================================
-# 森林生成系统（完全匹配C++逻辑）
+# 森林生成系统
 # ============================================================================
 # ============================================================================
-# 森林密度计算系统（完全匹配C++逻辑）
+# 森林密度计算系统
 # ============================================================================
 
 func calculate_forestosity():
 	"""
 	计算当前区块的森林密度调整值
 	根据区块在世界中的位置和4个方向的森林增长率参数来动态调整森林大小
-	完全匹配C++版本的overmap::calculate_forestosity()函数
 	"""
 	# 获取当前区块的世界绝对坐标（对应C++的point_abs_om this_om = pos()）
 	var this_om_x = current_generating_chunk.x
@@ -1040,15 +1035,15 @@ func calculate_forestosity():
 	if Config.ForestConfig.INCREASE_SOUTH != 0.0 and this_om_y > 0:
 		forest_size_adjust += this_om_y * Config.ForestConfig.INCREASE_SOUTH
 
-	# 计算forestosity值（对应C++的forestosity = forest_size_adjust * 25.0f）
+	# 计算forestosity值
 	forestosity = forest_size_adjust * 25.0
 
-	# 确保森林大小永远不会完全覆盖地图（对应C++的森林上限检查）
+	# 确保森林大小永远不会完全覆盖地图
 	# forest_size_adjust不能超过 (森林上限 - 森林噪声阈值)
 	var max_forest_adjust = Config.ForestConfig.LIMIT - Config.ForestConfig.NOISE_THRESHOLD_FOREST
 	forest_size_adjust = min(forest_size_adjust, max_forest_adjust)
 
-	# 调试输出（对应C++的debugmsg，可以根据需要启用）
+	# 调试输出
 	# print("forestosity = %.2f at OM %d, %d" % [forestosity, this_om_x, this_om_y])
 
 func calculate_urbanity():
@@ -1073,7 +1068,7 @@ func calculate_urbanity():
 
 	var urbanity_adj: float = 0.0
 
-	# 获取当前区块的世界绝对坐标（对应C++的point_abs_om this_om = pos()）
+	# 获取当前区块的世界绝对坐标
 	var this_om_x = current_generating_chunk.x
 	var this_om_y = current_generating_chunk.y
 
@@ -1113,9 +1108,6 @@ func calculate_urbanity():
 
 	# 设置最终的城市化程度值
 	urbanity = int(urbanity_adj)
-
-	# 调试输出（对应C++的debugmsg，可以根据需要启用）
-	# print("urbanity = %d at OM %d, %d" % [urbanity, this_om_x, this_om_y])
 
 # ============================================================================
 # 画布渲染更新系统
@@ -1252,11 +1244,6 @@ func place_swamps():
 	洪范平原生成主函数，优化版本
 	基于河流位置计算洪泛平原，结合噪声生成沼泽地形
 	只在森林地形上生成沼泽，符合生态逻辑
-
-	性能优化：
-	1. 去除不必要的排序操作
-	2. 智能边界检查，减少不必要的计算
-	3. 早期退出优化
 	"""
 	var chunk_coord = current_generating_chunk
 	# 计算区块在世界坐标系中的范围
@@ -1308,7 +1295,7 @@ func place_swamps():
 			var world_pos = Vector2i(world_start_x + x, world_start_y + y)
 			var current_terrain = terrain_data.get(world_pos, Config.TerrainConfig.TYPE_EMPTY)
 
-			# 只在森林地形上生成沼泽（匹配C++的is_ot_match("forest", ot_match_type::contains)）
+			# 只在森林地形上生成沼泽
 			if current_terrain != Config.TerrainConfig.TYPE_FOREST and current_terrain != Config.TerrainConfig.TYPE_FOREST_THICK:
 				continue
 
